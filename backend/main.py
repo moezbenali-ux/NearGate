@@ -27,6 +27,7 @@ from database import init_db, get_connection
 from auth import verifier_api_key
 from auth_jwt import creer_token, verifier_mdp, get_current_user
 from mqtt_client import demarrer_mqtt, esp32_status
+from sync_agent import demarrer_sync
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,6 +44,11 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Base de données initialisée.")
     mqtt_client = demarrer_mqtt()
+    demarrer_sync(
+        api_url=os.getenv("SCALEWAY_API_URL", ""),
+        api_key=os.getenv("SCALEWAY_API_KEY", ""),
+        client_id=os.getenv("CLIENT_ID", ""),
+    )
     yield
     mqtt_client.loop_stop()
     mqtt_client.disconnect()

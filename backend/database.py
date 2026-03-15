@@ -37,7 +37,8 @@ def init_db():
             action TEXT NOT NULL,
             direction TEXT NOT NULL DEFAULT 'inconnu',
             portail_id TEXT NOT NULL DEFAULT 'entree_ext',
-            horodatage TEXT NOT NULL DEFAULT (datetime('now'))
+            horodatage TEXT NOT NULL DEFAULT (datetime('now')),
+            synced_le TEXT
         )
     """)
 
@@ -91,6 +92,14 @@ def init_db():
     ]:
         try:
             cursor.execute(f"ALTER TABLE badges ADD COLUMN {col} {definition}")
+        except Exception:
+            pass
+
+    for col, definition in [
+        ("synced_le", "TEXT"),
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE evenements ADD COLUMN {col} {definition}")
         except Exception:
             pass  # Colonne déjà présente
 

@@ -25,25 +25,12 @@
 
 // ─── Configuration — À MODIFIER ────────────────────────────────────────────
 
-// Mode de déploiement :
-//   false = réseau WiFi client normal (bureau, domicile)
-//   true  = hotspot NearGate (démo chez prospect, pas de WiFi externe)
-const bool MODE_HOTSPOT = false;
+// Wi-Fi — Hotspot NearGate (toujours fixe, généré par le Raspberry Pi)
+const char* WIFI_SSID     = "NearGate";
+const char* WIFI_PASSWORD = "NearGate2026!";
 
-// Wi-Fi réseau client (MODE_HOTSPOT = false)
-const char* WIFI_SSID_CLIENT   = "Freebox-1A3701";
-const char* WIFI_PASS_CLIENT   = "h5577q9k24qcwcsvqbd7xd";
-const char* MQTT_SERVER_CLIENT = "192.168.1.94";
-
-// Wi-Fi hotspot NearGate (MODE_HOTSPOT = true)
-const char* WIFI_SSID_HOTSPOT   = "NearGate-Demo";
-const char* WIFI_PASS_HOTSPOT   = "NearGate2026!";
-const char* MQTT_SERVER_HOTSPOT = "192.168.42.1";
-
-// Sélection automatique selon le mode
-const char* WIFI_SSID   = MODE_HOTSPOT ? WIFI_SSID_HOTSPOT   : WIFI_SSID_CLIENT;
-const char* WIFI_PASSWORD = MODE_HOTSPOT ? WIFI_PASS_HOTSPOT  : WIFI_PASS_CLIENT;
-const char* MQTT_SERVER   = MODE_HOTSPOT ? MQTT_SERVER_HOTSPOT : MQTT_SERVER_CLIENT;
+// MQTT — IP fixe du Raspberry Pi sur son propre hotspot
+const char* MQTT_SERVER   = "192.168.42.1";
 const int   MQTT_PORT     = 1883;
 // Client ID unique — doit correspondre au PORTAIL_ID de cet ESP32
 // ESP32 extérieur : "neargate-esp32-entree-ext"

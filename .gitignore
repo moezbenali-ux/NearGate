@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets
+backend/.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Backend static (généré par le build frontend)
+backend/static/
+
+# Fichiers temporaires
+backend/test_ble_raw.py
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

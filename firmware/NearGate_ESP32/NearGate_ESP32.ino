@@ -297,11 +297,21 @@ void setup() {
   digitalWrite(PIN_RELAIS, LOW);
 
   // Wi-Fi
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect(true);
+  delay(500);
   Serial.printf("[WiFi] Connexion à %s...\n", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
+  int tentatives = 0;
+  while (WiFi.status() != WL_CONNECTED && tentatives < 40) {
     delay(500);
     Serial.print(".");
+    tentatives++;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\n[WiFi] Échec connexion — redémarrage dans 10s...");
+    delay(10000);
+    ESP.restart();
   }
   Serial.printf("\n[WiFi] Connecté. IP : %s\n", WiFi.localIP().toString().c_str());
 

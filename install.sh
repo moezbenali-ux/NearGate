@@ -161,9 +161,24 @@ log "Fichier .env créé (permissions 600)"
 
 # ─── Base de données + compte admin ──────────────────────────
 section "Base de données"
+
+DB_PATH="${INSTALL_DIR}/backend/neargate.db"
+BACKUP_DIR="/opt/neargate/backups/${CLIENT_NOM}"
+mkdir -p "$BACKUP_DIR"
+
+# Sauvegarde de la DB existante avant toute modification
+if [[ -f "$DB_PATH" ]]; then
+    BACKUP_FILE="${BACKUP_DIR}/neargate_$(date '+%Y%m%d_%H%M%S').db"
+    cp "$DB_PATH" "$BACKUP_FILE"
+    log "Base de données sauvegardée → ${BACKUP_FILE}"
+fi
+
+# Nettoyage des sauvegardes de plus de 30 jours
+find "$BACKUP_DIR" -name "*.db" -mtime +30 -delete 2>/dev/null || true
+
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
-# Initialisation DB
+# Initialisation DB (crée les tables manquantes, applique les migrations)
 sudo -u "$SERVICE_USER" "${INSTALL_DIR}/venv/bin/python3" -c "
 import sys; sys.path.insert(0, '${INSTALL_DIR}/backend')
 from database import init_db; init_db()
@@ -272,6 +287,20 @@ rm -f /etc/nginx/sites-enabled/default
 
 nginx -t 2>/dev/null && warn "Nginx configuré — en attente du certificat SSL" \
                       || warn "Nginx : vérifiez la configuration manuellement"
+
+# ─── Sauvegarde automatique quotidienne ──────────────────────
+section "Sauvegarde automatique"
+
+cat > "/etc/cron.daily/neargate-backup-${CLIENT_NOM}" <<EOF
+#!/bin/bash
+BACKUP_DIR="/opt/neargate/backups/${CLIENT_NOM}"
+mkdir -p "\$BACKUP_DIR"
+cp "${INSTALL_DIR}/backend/neargate.db" "\${BACKUP_DIR}/neargate_\$(date '+%Y%m%d').db"
+find "\$BACKUP_DIR" -name "*.db" -mtime +30 -delete
+EOF
+
+chmod +x "/etc/cron.daily/neargate-backup-${CLIENT_NOM}"
+log "Sauvegarde quotidienne configurée → /opt/neargate/backups/${CLIENT_NOM}/"
 
 # ─── Cloudflare Tunnel ────────────────────────────────────────
 section "Cloudflare Tunnel"

@@ -16,7 +16,7 @@ from email.mime.text import MIMEText
 from typing import Optional
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
@@ -69,6 +69,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+router = APIRouter()
+
 
 # ─── Modèles ───────────────────────────────────────────────────────────────
 
@@ -105,7 +107,7 @@ class UtilisateurCreation(BaseModel):
 
 # ─── Authentification ──────────────────────────────────────────────────────
 
-@app.post("/auth/login")
+@router.post("/auth/login")
 def login(form: OAuth2PasswordRequestForm = Depends()):
     conn = get_connection()
     user = conn.execute(
@@ -119,7 +121,7 @@ def login(form: OAuth2PasswordRequestForm = Depends()):
     return {"access_token": token, "token_type": "bearer", "nom": user["nom"], "role": user["role"]}
 
 
-@app.post("/auth/mot-de-passe-oublie")
+@router.post("/auth/mot-de-passe-oublie")
 def mot_de_passe_oublie(body: DemandeResetMdp):
     conn = get_connection()
     user = conn.execute(
@@ -164,7 +166,7 @@ def mot_de_passe_oublie(body: DemandeResetMdp):
     return {"message": "Si cet email est connu, un lien de réinitialisation a été envoyé."}
 
 
-@app.post("/auth/reinitialiser-mdp")
+@router.post("/auth/reinitialiser-mdp")
 def reinitialiser_mdp(body: ResetMdp):
     from auth_jwt import hasher_mdp
     conn = get_connection()
@@ -190,14 +192,14 @@ def reinitialiser_mdp(body: ResetMdp):
     return {"message": "Mot de passe mis à jour avec succès."}
 
 
-@app.get("/auth/me")
+@router.get("/auth/me")
 def me(current_user=Depends(get_current_user)):
     return current_user
 
 
 # ─── Utilisateurs ──────────────────────────────────────────────────────────
 
-@app.get("/utilisateurs", dependencies=[Depends(get_current_user)])
+@router.get("/utilisateurs", dependencies=[Depends(get_current_user)])
 def lister_utilisateurs():
     conn = get_connection()
     rows = conn.execute(
@@ -207,7 +209,7 @@ def lister_utilisateurs():
     return [dict(r) for r in rows]
 
 
-@app.post("/utilisateurs", status_code=201, dependencies=[Depends(get_current_user)])
+@router.post("/utilisateurs", status_code=201, dependencies=[Depends(get_current_user)])
 def creer_utilisateur(u: UtilisateurCreation):
     from auth_jwt import hasher_mdp
     conn = get_connection()
@@ -224,7 +226,7 @@ def creer_utilisateur(u: UtilisateurCreation):
     return {"message": "Utilisateur créé."}
 
 
-@app.post("/utilisateurs/import")
+@router.post("/utilisateurs/import")
 async def importer_utilisateurs_csv(
     fichier: UploadFile = File(...),
     current_user=Depends(get_current_user),
@@ -260,7 +262,7 @@ async def importer_utilisateurs_csv(
     return {"ajoutes": ajoutes, "ignores": ignores, "erreurs": erreurs}
 
 
-@app.delete("/utilisateurs/{user_id}", dependencies=[Depends(get_current_user)])
+@router.delete("/utilisateurs/{user_id}", dependencies=[Depends(get_current_user)])
 def supprimer_utilisateur(user_id: int):
     conn = get_connection()
     conn.execute("UPDATE utilisateurs SET actif = 0 WHERE id = ?", (user_id,))
@@ -271,7 +273,7 @@ def supprimer_utilisateur(user_id: int):
 
 # ─── Badges ────────────────────────────────────────────────────────────────
 
-@app.get("/badges")
+@router.get("/badges")
 def lister_badges(current_user=Depends(get_current_user)):
     conn = get_connection()
     rows = conn.execute("SELECT * FROM badges ORDER BY cree_le DESC").fetchall()
@@ -279,7 +281,7 @@ def lister_badges(current_user=Depends(get_current_user)):
     return [dict(r) for r in rows]
 
 
-@app.post("/badges", status_code=status.HTTP_201_CREATED)
+@router.post("/badges", status_code=status.HTTP_201_CREATED)
 def ajouter_badge(badge: BadgeCreation, current_user=Depends(get_current_user)):
     conn = get_connection()
     try:
@@ -295,7 +297,7 @@ def ajouter_badge(badge: BadgeCreation, current_user=Depends(get_current_user)):
     return {"message": "Badge ajouté.", "uuid": badge.uuid}
 
 
-@app.patch("/badges/{uuid}")
+@router.patch("/badges/{uuid}")
 def modifier_badge(uuid: str, maj: BadgeMiseAJour, current_user=Depends(get_current_user)):
     conn = get_connection()
     row = conn.execute("SELECT id FROM badges WHERE uuid = ?", (uuid,)).fetchone()
@@ -311,7 +313,7 @@ def modifier_badge(uuid: str, maj: BadgeMiseAJour, current_user=Depends(get_curr
     return {"message": "Badge mis à jour."}
 
 
-@app.post("/badges/import")
+@router.post("/badges/import")
 async def importer_badges_csv(
     fichier: UploadFile = File(...),
     current_user=Depends(get_current_user),
@@ -341,7 +343,7 @@ async def importer_badges_csv(
     return {"ajoutes": ajoutes, "ignores": ignores, "erreurs": erreurs}
 
 
-@app.delete("/badges/{uuid}")
+@router.delete("/badges/{uuid}")
 def supprimer_badge(uuid: str, current_user=Depends(get_current_user)):
     conn = get_connection()
     result = conn.execute("DELETE FROM badges WHERE uuid = ?", (uuid,))
@@ -354,7 +356,7 @@ def supprimer_badge(uuid: str, current_user=Depends(get_current_user)):
 
 # ─── États des badges ──────────────────────────────────────────────────────
 
-@app.get("/etats")
+@router.get("/etats")
 def lister_etats(current_user=Depends(get_current_user)):
     conn = get_connection()
     rows = conn.execute("""
@@ -366,7 +368,7 @@ def lister_etats(current_user=Depends(get_current_user)):
     return [dict(r) for r in rows]
 
 
-@app.delete("/etats/{uuid}")
+@router.delete("/etats/{uuid}")
 def liberer_badge(uuid: str, current_user=Depends(get_current_user)):
     conn = get_connection()
     result = conn.execute("DELETE FROM badges_etat WHERE uuid = ?", (uuid,))
@@ -379,7 +381,7 @@ def liberer_badge(uuid: str, current_user=Depends(get_current_user)):
 
 # ─── Événements ────────────────────────────────────────────────────────────
 
-@app.get("/evenements")
+@router.get("/evenements")
 def lister_evenements(
     limite: int = 100,
     direction: Optional[str] = None,
@@ -402,7 +404,7 @@ def lister_evenements(
 
 # ─── Configuration ─────────────────────────────────────────────────────────
 
-@app.get("/config")
+@router.get("/config")
 def lire_config(current_user=Depends(get_current_user)):
     conn = get_connection()
     rows = conn.execute("SELECT * FROM config").fetchall()
@@ -410,7 +412,7 @@ def lire_config(current_user=Depends(get_current_user)):
     return {r["cle"]: r["valeur"] for r in rows}
 
 
-@app.put("/config/{cle}")
+@router.put("/config/{cle}")
 def modifier_config(cle: str, maj: ConfigMiseAJour, current_user=Depends(get_current_user)):
     conn = get_connection()
     row = conn.execute("SELECT cle FROM config WHERE cle = ?", (cle,)).fetchone()
@@ -425,7 +427,7 @@ def modifier_config(cle: str, maj: ConfigMiseAJour, current_user=Depends(get_cur
 
 # ─── Radar BLE ─────────────────────────────────────────────────────────────
 
-@app.get("/radar/scan")
+@router.get("/radar/scan")
 async def radar_scan(duree: int = 5, current_user=Depends(get_current_user)):
     """Scanne les appareils BLE à proximité du Raspberry Pi."""
     try:
@@ -503,7 +505,7 @@ async def radar_scan(duree: int = 5, current_user=Depends(get_current_user)):
 
 # ─── Commande manuelle ─────────────────────────────────────────────────────
 
-@app.post("/portail/{portail_id}/ouvrir")
+@router.post("/portail/{portail_id}/ouvrir")
 def ouvrir_portail(portail_id: str, current_user=Depends(get_current_user)):
     import json as _json
     if portail_id not in ("entree_ext", "entree_int"):
@@ -523,7 +525,7 @@ def ouvrir_portail(portail_id: str, current_user=Depends(get_current_user)):
 
 # ─── Supervision ───────────────────────────────────────────────────────────
 
-@app.get("/supervision")
+@router.get("/supervision")
 def supervision(current_user=Depends(get_current_user)):
     """Retourne le statut des ESP32 et le niveau de batterie / dernière détection des badges."""
     from datetime import datetime, timedelta
@@ -566,10 +568,12 @@ def supervision(current_user=Depends(get_current_user)):
 
 # ─── Santé ─────────────────────────────────────────────────────────────────
 
-@app.get("/ping")
+@router.get("/ping")
 def ping():
     return {"status": "ok", "service": "NearGate"}
 
+
+app.include_router(router, prefix="/api")
 
 # ─── Dashboard (fichiers statiques React) ──────────────────────────────────
 

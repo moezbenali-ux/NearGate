@@ -1,4 +1,4 @@
-const BASE = ''
+const BASE = '/api'
 
 function token() {
   return localStorage.getItem('ng_token')

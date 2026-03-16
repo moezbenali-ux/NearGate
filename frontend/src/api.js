@@ -32,7 +32,7 @@ export const api = {
   // Auth
   login: async (email, mdp) => {
     const body = new URLSearchParams({ username: email, password: mdp })
-    const res = await fetch('/auth/login', {
+    const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,

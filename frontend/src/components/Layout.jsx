@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, CreditCard, History, Settings, LogOut, Zap, Users, Radar, Activity } from 'lucide-react'
+import { LayoutDashboard, CreditCard, History, Settings, LogOut, Zap, Users, Radar, Activity, Menu, X } from 'lucide-react'
 import { api } from '../api'
 
 const PAGES = {
@@ -15,42 +16,46 @@ const PAGES = {
 const user = () => JSON.parse(localStorage.getItem('ng_user') || '{}')
 
 export default function Layout() {
-  const navigate  = useNavigate()
-  const location  = useLocation()
-  const pageTitle = PAGES[location.pathname] || 'NearGate'
+  const navigate   = useNavigate()
+  const location   = useLocation()
+  const pageTitle  = PAGES[location.pathname] || 'NearGate'
+  const [menuOpen, setMenuOpen] = useState(false)
 
   function logout() {
     api.logout()
     navigate('/login')
   }
 
+  function fermerMenu() { setMenuOpen(false) }
+
   return (
     <div className="layout">
-      <aside className="sidebar">
+      {menuOpen && <div className="sidebar-overlay" onClick={fermerMenu} />}
+      <aside className={`sidebar${menuOpen ? ' sidebar-open' : ''}`}>
         <div className="sidebar-logo">
           <Zap size={20} />
           NearGate
         </div>
         <nav className="sidebar-nav">
-          <NavLink to="/" end className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+          <NavLink to="/" end onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <LayoutDashboard size={17} /> Dashboard
           </NavLink>
-          <NavLink to="/badges" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+          <NavLink to="/badges" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <CreditCard size={17} /> Badges
           </NavLink>
-          <NavLink to="/historique" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+          <NavLink to="/historique" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <History size={17} /> Historique
           </NavLink>
-          <NavLink to="/gestionnaires" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+          <NavLink to="/gestionnaires" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <Users size={17} /> Gestionnaires
           </NavLink>
-          <NavLink to="/configuration" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+          <NavLink to="/configuration" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <Settings size={17} /> Configuration
           </NavLink>
-          <NavLink to="/radar" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+          <NavLink to="/radar" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <Radar size={17} /> Radar BLE
           </NavLink>
-          <NavLink to="/supervision" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+          <NavLink to="/supervision" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <Activity size={17} /> Supervision
           </NavLink>
         </nav>
@@ -63,7 +68,12 @@ export default function Layout() {
       </aside>
 
       <div className="topbar">
-        <span className="topbar-title">{pageTitle}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button className="menu-toggle" onClick={() => setMenuOpen(o => !o)} aria-label="Menu">
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+          <span className="topbar-title">{pageTitle}</span>
+        </div>
         <div className="topbar-right">
           <span className="topbar-user">{user().nom}</span>
         </div>

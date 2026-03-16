@@ -18,7 +18,7 @@ export default function ReinitialiserMdp() {
     setLoading(true)
     setErreur('')
     try {
-      const res = await fetch('/auth/reinitialiser-mdp', {
+      const res = await fetch('/api/auth/reinitialiser-mdp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, mot_de_passe: mdp }),

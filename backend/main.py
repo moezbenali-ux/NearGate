@@ -388,14 +388,19 @@ def lister_evenements(
     current_user=Depends(get_current_user),
 ):
     conn = get_connection()
+    base_query = """
+        SELECT e.*, b.nom AS badge_nom
+        FROM evenements e
+        LEFT JOIN badges b ON b.uuid = e.badge_uuid
+    """
     if direction:
         rows = conn.execute(
-            "SELECT * FROM evenements WHERE direction = ? ORDER BY horodatage DESC LIMIT ?",
+            base_query + " WHERE e.direction = ? ORDER BY e.horodatage DESC LIMIT ?",
             (direction, limite),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT * FROM evenements ORDER BY horodatage DESC LIMIT ?",
+            base_query + " ORDER BY e.horodatage DESC LIMIT ?",
             (limite,),
         ).fetchall()
     conn.close()

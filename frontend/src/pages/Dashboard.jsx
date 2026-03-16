@@ -106,13 +106,16 @@ export default function Dashboard() {
             : (
               <table>
                 <thead>
-                  <tr><th>Date</th><th>Badge</th><th>Direction</th><th>RSSI</th><th>Portail</th></tr>
+                  <tr><th>Date</th><th>Utilisateur</th><th>Direction</th><th>RSSI</th><th>Portail</th></tr>
                 </thead>
                 <tbody>
                   {evenements.map(e => (
                     <tr key={e.id}>
                       <td>{fmt(e.horodatage)}</td>
-                      <td className="text-muted text-sm">{e.badge_uuid}</td>
+                      <td>
+                        <div style={{ fontWeight: 500, fontSize: 14 }}>{e.badge_nom || e.badge_uuid}</div>
+                        {e.badge_nom && <div className="text-muted text-sm">{e.badge_uuid.slice(0, 8)}…</div>}
+                      </td>
                       <td>
                         <span className={`badge ${e.direction}`}>
                           {e.direction === 'entree' ? '↘ Entrée' : e.direction === 'sortie' ? '↗ Sortie' : e.direction}

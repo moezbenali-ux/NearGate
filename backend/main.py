@@ -732,7 +732,7 @@ app.include_router(router, prefix="/api")
 # ─── Dashboard (fichiers statiques React) ──────────────────────────────────
 
 STATIC_DIR = Path(__file__).parent / "static"
-if STATIC_DIR.exists():
+if (STATIC_DIR / "assets").exists():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)

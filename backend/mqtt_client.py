@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
 from database import get_connection
+import sse
 
 load_dotenv()
 
@@ -107,6 +108,7 @@ def _enregistrer_evenement(uuid, rssi, action, portail_id, direction):
     )
     conn.commit()
     conn.close()
+    sse.diffuser("evenement")
 
 
 # ─── Machine d'états ───────────────────────────────────────────────────────

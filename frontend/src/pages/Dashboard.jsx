@@ -22,8 +22,20 @@ export default function Dashboard() {
 
   useEffect(() => {
     charger()
-    const t = setInterval(charger, 15000)
-    return () => clearInterval(t)
+
+    const token = localStorage.getItem('ng_token')
+    if (!token) return
+
+    const es = new EventSource(`/api/events?token=${encodeURIComponent(token)}`)
+
+    es.onmessage = (e) => {
+      try {
+        const { type } = JSON.parse(e.data)
+        if (type === 'evenement') charger()
+      } catch {}
+    }
+
+    return () => es.close()
   }, [])
 
   const actifs  = badges.filter(b => b.actif).length
@@ -36,7 +48,7 @@ export default function Dashboard() {
     <div className="fade-up">
       <div className="page-header">
         <h1>Vue d'ensemble</h1>
-        <p>Actualisation automatique toutes les 15 secondes</p>
+        <p>Mise à jour en temps réel</p>
       </div>
 
       <div className="cards">

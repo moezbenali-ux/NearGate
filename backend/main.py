@@ -16,11 +16,11 @@ from email.mime.text import MIMEText
 from typing import Optional
 from pathlib import Path
 
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Query, Request, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from database import init_db, get_connection
@@ -28,6 +28,7 @@ from auth import verifier_api_key
 from auth_jwt import creer_token, verifier_mdp, get_current_user
 from mqtt_client import demarrer_mqtt, esp32_status
 from sync_agent import demarrer_sync
+import sse
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,6 +44,7 @@ async def lifespan(app: FastAPI):
     global mqtt_client
     init_db()
     logger.info("Base de données initialisée.")
+    sse.set_loop(asyncio.get_event_loop())
     mqtt_client = demarrer_mqtt()
     demarrer_sync(
         api_url=os.getenv("SCALEWAY_API_URL", ""),
@@ -70,6 +72,23 @@ app.add_middleware(
 )
 
 router = APIRouter()
+
+
+# ─── Contrôle d'accès par rôle ─────────────────────────────────────────────
+
+def require_role(role: str):
+    """
+    Factory de dépendance FastAPI pour restreindre l'accès par rôle.
+    Usage : @router.get("/route", dependencies=[Depends(require_role("admin"))])
+    """
+    def _check(current_user=Depends(get_current_user)):
+        if current_user["role"] != role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Accès refusé. Rôle requis : {role}.",
+            )
+        return current_user
+    return _check
 
 
 # ─── Modèles ───────────────────────────────────────────────────────────────
@@ -199,7 +218,7 @@ def me(current_user=Depends(get_current_user)):
 
 # ─── Utilisateurs ──────────────────────────────────────────────────────────
 
-@router.get("/utilisateurs", dependencies=[Depends(get_current_user)])
+@router.get("/utilisateurs", dependencies=[Depends(require_role("admin"))])
 def lister_utilisateurs():
     conn = get_connection()
     rows = conn.execute(
@@ -209,7 +228,7 @@ def lister_utilisateurs():
     return [dict(r) for r in rows]
 
 
-@router.post("/utilisateurs", status_code=201, dependencies=[Depends(get_current_user)])
+@router.post("/utilisateurs", status_code=201, dependencies=[Depends(require_role("admin"))])
 def creer_utilisateur(u: UtilisateurCreation):
     from auth_jwt import hasher_mdp
     conn = get_connection()
@@ -229,7 +248,7 @@ def creer_utilisateur(u: UtilisateurCreation):
 @router.post("/utilisateurs/import")
 async def importer_utilisateurs_csv(
     fichier: UploadFile = File(...),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_role("admin")),
 ):
     """Importe des utilisateurs depuis un CSV (colonnes : email, nom, mot_de_passe, role)."""
     from auth_jwt import hasher_mdp
@@ -262,7 +281,7 @@ async def importer_utilisateurs_csv(
     return {"ajoutes": ajoutes, "ignores": ignores, "erreurs": erreurs}
 
 
-@router.delete("/utilisateurs/{user_id}", dependencies=[Depends(get_current_user)])
+@router.delete("/utilisateurs/{user_id}", dependencies=[Depends(require_role("admin"))])
 def supprimer_utilisateur(user_id: int):
     conn = get_connection()
     conn.execute("UPDATE utilisateurs SET actif = 0 WHERE id = ?", (user_id,))
@@ -418,7 +437,7 @@ def lire_config(current_user=Depends(get_current_user)):
 
 
 @router.put("/config/{cle}")
-def modifier_config(cle: str, maj: ConfigMiseAJour, current_user=Depends(get_current_user)):
+def modifier_config(cle: str, maj: ConfigMiseAJour, current_user=Depends(require_role("admin"))):
     conn = get_connection()
     row = conn.execute("SELECT cle FROM config WHERE cle = ?", (cle,)).fetchone()
     if not row:
@@ -513,18 +532,27 @@ async def radar_scan(duree: int = 5, current_user=Depends(get_current_user)):
 @router.post("/portail/{portail_id}/ouvrir")
 def ouvrir_portail(portail_id: str, current_user=Depends(get_current_user)):
     import json as _json
-    if portail_id not in ("entree_ext", "entree_int"):
+    # Mapping portailId → (topic MQTT firmware, direction événement)
+    # "sortie_ext" est le nom sémantique correct pour la sortie.
+    # Il publie sur "entree_int" pour rester compatible avec le firmware actuel.
+    PORTAIL_MAP = {
+        "entree_ext": ("entree_ext", "entree"),
+        "entree_int": ("entree_int", "sortie"),   # legacy — conservé pour compatibilité
+        "sortie_ext": ("entree_int", "sortie"),   # nom sémantique → même topic firmware
+    }
+    if portail_id not in PORTAIL_MAP:
         raise HTTPException(status_code=400, detail="portail_id invalide.")
-    topic = f"neargate/commande/{portail_id}"
-    mqtt_client.publish(topic, _json.dumps({"action": "ouvrir"}))
+    topic_id, direction = PORTAIL_MAP[portail_id]
+    mqtt_client.publish(f"neargate/commande/{topic_id}", _json.dumps({"action": "ouvrir"}))
     logger.info("Ouverture manuelle du portail %s par %s", portail_id, current_user["email"])
     conn = get_connection()
     conn.execute(
         "INSERT INTO evenements (badge_uuid, rssi, action, direction, portail_id) VALUES (?, ?, ?, ?, ?)",
-        ("manuel", None, "ouverture_manuelle", "entree" if portail_id == "entree_ext" else "sortie", portail_id),
+        ("manuel", None, "ouverture_manuelle", direction, portail_id),
     )
     conn.commit()
     conn.close()
+    sse.diffuser("evenement")
     return {"message": f"Commande envoyée au portail {portail_id}."}
 
 
@@ -569,6 +597,59 @@ def supervision(current_user=Depends(get_current_user)):
     badges_list = [dict(r) for r in rows]
 
     return {"esp32": esp32_list, "badges": badges_list}
+
+
+# ─── SSE — événements temps réel ───────────────────────────────────────────
+
+@router.get("/events")
+async def sse_events(request: Request, token: str = Query(...)):
+    """
+    Stream SSE. Le Dashboard s'y abonne pour recevoir les événements en temps réel.
+    EventSource ne supporte pas les en-têtes custom → le JWT est passé en query param.
+    """
+    from jose import JWTError, jwt as _jwt
+    from auth_jwt import SECRET_KEY, ALGORITHM
+    try:
+        payload = _jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub", "")
+        if not email:
+            raise ValueError()
+    except (JWTError, ValueError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide.")
+
+    conn = get_connection()
+    user = conn.execute(
+        "SELECT id FROM utilisateurs WHERE email = ? AND actif = 1", (email,)
+    ).fetchone()
+    conn.close()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur introuvable.")
+
+    queue: asyncio.Queue = asyncio.Queue()
+    sse.sse_clients.append(queue)
+
+    async def generator():
+        try:
+            while True:
+                try:
+                    data = await asyncio.wait_for(queue.get(), timeout=20.0)
+                    yield f"data: {data}\n\n"
+                except asyncio.TimeoutError:
+                    # Heartbeat pour maintenir la connexion ouverte
+                    yield ": heartbeat\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            try:
+                sse.sse_clients.remove(queue)
+            except ValueError:
+                pass
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ─── Santé ─────────────────────────────────────────────────────────────────

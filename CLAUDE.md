@@ -11,7 +11,8 @@ le portail s'ouvre sans aucune action de l'utilisateur (hands-free).
 - **Cible secondaire** : résidentiel individuel (phase 2)
 - **Porteur** : Moez Benali, Directeur Informatique (profil infra/réseaux, non-développeur)
 - **Modèle** : SaaS — Start 49€/mois/portail, Pro 99€/mois/portail
-- **Hébergement** : Raspberry Pi 3 en local (POC) → Scaleway Paris (production)
+- **Hébergement** : Raspberry Pi 3 sur site client (production via Cloudflare Tunnel)
+- **URL de production** : https://app.neargate.fr (Cloudflare Tunnel + Let's Encrypt)
 
 ## Architecture technique
 
@@ -33,9 +34,17 @@ le portail s'ouvre sans aucune action de l'utilisateur (hands-free).
 - **Frontend** : React + Vite (PWA) — `frontend/src/`
 - **Auth** : JWT HS256 + bcrypt — `auth_jwt.py`
 - **Reverse proxy** : Nginx avec TLS (cert auto-signé) → `scripts/setup_https.sh`
+- **Exposition externe** : Cloudflare Tunnel → Let's Encrypt → https://app.neargate.fr
 - **Service** : systemd `neargate.service`
 
-### Serveur de test
+### Réseau de production
+```
+Utilisateur → https://app.neargate.fr → Cloudflare Tunnel → Nginx → FastAPI :8000
+```
+- Accès local direct (hotspot) : `https://neargate.local` / `192.168.42.1`
+- Accès distant (partout) : `https://app.neargate.fr`
+
+### Serveur Raspberry Pi
 - Raspberry Pi 3 — `neargate.local` / `192.168.42.1` (hotspot WiFi)
 - User : `admin` — Path : `/home/admin/NearGate`
 - Mosquitto sécurisé, Node-RED installé (non utilisé), VS Code Remote-SSH
@@ -50,10 +59,10 @@ le portail s'ouvre sans aucune action de l'utilisateur (hands-free).
 - [x] Simulation ESP32 sans matériel (`simuler_esp32.py`)
 - [x] Sync agent vers Scaleway (`sync_agent.py`) — côté client seulement
 - [x] `.env.example` créé, `.env` hors git
-- [ ] Rôles non appliqués — un gestionnaire peut tout faire comme un admin
+- [x] Rôles appliqués — `require_role("admin")` sur /utilisateurs (CRUD) et PUT /config
 - [ ] Serveur central Scaleway inexistant (multi-tenant)
 - [ ] Portails hardcodés dans `main.py` (pas encore dynamiques)
-- [ ] Pas de WebSocket/SSE (dashboard en polling 15s)
+- [x] SSE opérationnel — endpoint `/api/events`, broadcast depuis mqtt_client + ouvrir_portail
 - [ ] Pas d'alertes email/push (ESP32 hors ligne, batterie faible)
 - [ ] Pas d'export CSV/PDF historique
 - [ ] `auth.py` (X-API-Key) inutilisé — vestige à supprimer
@@ -70,8 +79,8 @@ le portail s'ouvre sans aucune action de l'utilisateur (hands-free).
 - [x] GenerateurFirmware (génère .ino dans le navigateur)
 - [x] Auth complète (login, reset MDP, token URL)
 - [x] PWA configurée (manifest.json, icônes)
-- [ ] Mobile.jsx — bug : bouton "Sortie" utilise portailId="entree_int"
-- [ ] Pas de WebSocket (temps réel)
+- [x] Mobile.jsx — bouton "Sortie" corrigé : portailId="sortie_ext"
+- [x] Dashboard en temps réel via SSE (remplace le polling 15s)
 - [ ] Pas de notifications push
 
 ### Firmware — 90%
@@ -80,21 +89,30 @@ le portail s'ouvre sans aucune action de l'utilisateur (hands-free).
 - [ ] Configuré pour intérieur uniquement (PORTAIL_ID = "entree_int")
 - [ ] Pas de config extérieur/IP65
 
-### Infra — 70%
+### Infra — 85%
 - [x] Raspberry Pi + hotspot WiFi opérationnel
 - [x] HTTPS via Nginx + certificat auto-signé (`scripts/setup_https.sh`)
 - [x] `.env` hors git, `.env.example` documenté
+- [x] Cloudflare Tunnel opérationnel → https://app.neargate.fr (Let's Encrypt)
+- [x] **En production** (session 1 terminée)
 - [ ] Pas de tests automatisés (pytest, jest)
 - [ ] Multi-tenant / serveur Scaleway central inexistant
 
 ## Prochaines sessions prioritaires
 
-### Session 2 — Rôles + temps réel (bloquant pour démo client)
+### ✅ Session 1 — Sécurité de base (terminée, en prod)
 ```
-1. Applique les restrictions de rôles dans main.py :
-   un gestionnaire ne peut pas accéder aux routes admin
-2. Corrige Mobile.jsx — portailId="entree_int" sur le bouton Sortie
-3. Remplace le polling 15s du Dashboard par WebSocket ou SSE
+✓ backend/.env hors git, .env.example créé
+✓ JWT_SECRET obligatoire au démarrage (plus de fallback)
+✓ HTTPS Nginx + certificat auto-signé (neargate.local)
+✓ Cloudflare Tunnel → https://app.neargate.fr (Let's Encrypt)
+```
+
+### ✅ Session 2 — Rôles + temps réel (terminée)
+```
+✓ require_role("admin") sur /utilisateurs (CRUD+import) et PUT /config
+✓ Mobile.jsx — portailId="sortie_ext" sur le bouton Sortie (compat firmware)
+✓ Dashboard en temps réel via SSE — sse.py + /api/events + EventSource
 ```
 
 ### Session 3 — Portails dynamiques
@@ -121,6 +139,6 @@ Fichier de référence : `design_system.md` à la racine.
 - **Langue** : toujours répondre en français
 - **Niveau** : Moez n'est pas développeur — expliquer simplement, donner les commandes exactes
 - **Nom du boîtier** : NearGate Radar (jamais "ESP32" dans les documents commerciaux)
-- **Domaine** : neargate.fr (pas neargate.io)
+- **Domaine** : neargate.fr (pas neargate.io) — app sur app.neargate.fr
 - **Git** : ne jamais committer `.env` — utiliser `.env.example`
 - **JWT_SECRET** : doit être dans `.env`, le serveur doit planter si absent

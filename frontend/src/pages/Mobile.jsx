@@ -75,7 +75,7 @@ export default function Mobile() {
 
       <div style={{ width: '100%', maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <BoutonPortail label="🚗  Entrée — Ouvrir le portail" portailId="entree_ext" />
-        <BoutonPortail label="🚶  Sortie — Ouvrir le portail" portailId="entree_int" />
+        <BoutonPortail label="🚶  Sortie — Ouvrir le portail" portailId="sortie_ext" />
       </div>
 
       <button

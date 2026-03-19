@@ -39,15 +39,8 @@ TOPIC_DETECTION = "neargate/detection"
 TOPIC_COMMANDE  = "neargate/commande/{portail_id}"
 TOPIC_PING      = "neargate/ping/+"
 
-# IDs des ESP32
-ESP32_EXT = "entree_ext"
-ESP32_INT = "entree_int"
-
-# Suivi connectivité ESP32 (en mémoire)
-esp32_status: dict = {
-    ESP32_EXT: {"vu_le": None, "ip": None, "label": "Entrée extérieure"},
-    ESP32_INT: {"vu_le": None, "ip": None, "label": "Entrée intérieure"},
-}
+# Suivi connectivité ESP32 (en mémoire — peuplé dynamiquement depuis la DB et les heartbeats)
+esp32_status: dict = {}
 
 
 # ─── Helpers config / DB ───────────────────────────────────────────────────
@@ -64,6 +57,24 @@ def _badge_autorise(uuid):
     row = conn.execute("SELECT actif FROM badges WHERE uuid = ?", (uuid,)).fetchone()
     conn.close()
     return bool(row and row["actif"])
+
+
+def _portail_autorise(portail_id):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT actif FROM portails WHERE portail_id = ?", (portail_id,)
+    ).fetchone()
+    conn.close()
+    return bool(row and row["actif"])
+
+
+def _get_portail_nom(portail_id):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT nom FROM portails WHERE portail_id = ?", (portail_id,)
+    ).fetchone()
+    conn.close()
+    return row["nom"] if row else portail_id
 
 
 def _get_etat(uuid):
@@ -114,6 +125,11 @@ def _enregistrer_evenement(uuid, rssi, action, portail_id, direction):
 # ─── Machine d'états ───────────────────────────────────────────────────────
 
 def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id):
+    # Rejette les portails inconnus ou désactivés
+    if not _portail_autorise(portail_id):
+        logger.debug("Portail %s inconnu ou inactif → détection ignorée", portail_id)
+        return
+
     if not _badge_autorise(uuid):
         logger.info("Badge %s non autorisé → refus", uuid)
         _enregistrer_evenement(uuid, rssi, "refus", portail_id, "inconnu")
@@ -133,27 +149,31 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id):
         return
 
     if etat == "libre":
-        if portail_id == ESP32_EXT and rssi >= seuil_entree:
-            logger.info("Badge %s — ENTRÉE autorisée (RSSI %d)", uuid, rssi)
-            topic = TOPIC_COMMANDE.format(portail_id=ESP32_EXT)
-            mqtt_client_instance.publish(topic, json.dumps({"action": "ouvrir"}))
+        if rssi >= seuil_entree:
+            logger.info("Badge %s — ENTRÉE autorisée via %s (RSSI %d)", uuid, portail_id, rssi)
+            mqtt_client_instance.publish(
+                TOPIC_COMMANDE.format(portail_id=portail_id),
+                json.dumps({"action": "ouvrir"})
+            )
             _set_etat(uuid, "interieur", rssi)
             _enregistrer_evenement(uuid, rssi, "ouverture", portail_id, "entree")
         else:
-            logger.debug("Badge %s LIBRE — pas de déclenchement (portail=%s, RSSI=%d)",
+            logger.debug("Badge %s LIBRE — RSSI insuffisant (portail=%s, RSSI=%d)",
                          uuid, portail_id, rssi)
 
     elif etat == "interieur":
         _update_last_seen(uuid, rssi)
 
-        if portail_id == ESP32_INT and rssi >= seuil_sortie:
-            logger.info("Badge %s — SORTIE autorisée (RSSI %d)", uuid, rssi)
-            topic = TOPIC_COMMANDE.format(portail_id=ESP32_INT)
-            mqtt_client_instance.publish(topic, json.dumps({"action": "ouvrir"}))
+        if rssi >= seuil_sortie:
+            logger.info("Badge %s — SORTIE autorisée via %s (RSSI %d)", uuid, portail_id, rssi)
+            mqtt_client_instance.publish(
+                TOPIC_COMMANDE.format(portail_id=portail_id),
+                json.dumps({"action": "ouvrir"})
+            )
             _set_etat(uuid, "libre", rssi)
             _enregistrer_evenement(uuid, rssi, "ouverture", portail_id, "sortie")
         else:
-            logger.debug("Badge %s INTÉRIEUR — pas de déclenchement (portail=%s, RSSI=%d)",
+            logger.debug("Badge %s INTÉRIEUR — RSSI insuffisant (portail=%s, RSSI=%d)",
                          uuid, portail_id, rssi)
 
 
@@ -223,7 +243,8 @@ def on_message(client, userdata, msg):
             portail_id = msg.topic.split("/")[-1]
             now = datetime.now().isoformat(sep=" ", timespec="seconds")
             if portail_id not in esp32_status:
-                esp32_status[portail_id] = {"label": portail_id}
+                # Récupère le nom depuis la DB (ou utilise portail_id comme fallback)
+                esp32_status[portail_id] = {"label": _get_portail_nom(portail_id)}
             esp32_status[portail_id]["vu_le"] = now
             esp32_status[portail_id]["ip"]    = payload.get("ip")
             logger.debug("Heartbeat reçu de %s (IP: %s)", portail_id, payload.get("ip"))
@@ -263,6 +284,16 @@ def on_message(client, userdata, msg):
 
 
 def demarrer_mqtt():
+    # Initialise esp32_status depuis les portails actifs en DB
+    # (ils apparaîtront en "Jamais vu" jusqu'au premier heartbeat)
+    conn = get_connection()
+    portails_actifs = conn.execute(
+        "SELECT portail_id, nom FROM portails WHERE actif = 1"
+    ).fetchall()
+    conn.close()
+    for p in portails_actifs:
+        esp32_status[p["portail_id"]] = {"label": p["nom"], "vu_le": None, "ip": None}
+
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     if USERNAME:
         client.username_pw_set(USERNAME, PASSWORD)

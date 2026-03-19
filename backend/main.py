@@ -124,6 +124,21 @@ class UtilisateurCreation(BaseModel):
     role: Optional[str] = "gestionnaire"
 
 
+class PortailCreation(BaseModel):
+    portail_id: str
+    nom: str
+    type: Optional[str] = "entree"
+    description: Optional[str] = None
+    actif: Optional[bool] = True
+
+
+class PortailMiseAJour(BaseModel):
+    nom: Optional[str] = None
+    type: Optional[str] = None
+    description: Optional[str] = None
+    actif: Optional[bool] = None
+
+
 # ─── Authentification ──────────────────────────────────────────────────────
 
 @router.post("/auth/login")
@@ -527,28 +542,81 @@ async def radar_scan(duree: int = 5, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Erreur scan BLE : {e}")
 
 
+# ─── Portails ──────────────────────────────────────────────────────────────
+
+@router.get("/portails")
+def lister_portails(current_user=Depends(get_current_user)):
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM portails ORDER BY cree_le ASC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@router.post("/portails", status_code=201)
+def creer_portail(p: PortailCreation, current_user=Depends(require_role("admin"))):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO portails (portail_id, nom, type, description, actif) VALUES (?, ?, ?, ?, ?)",
+            (p.portail_id.strip(), p.nom.strip(), p.type, p.description, int(p.actif)),
+        )
+        conn.commit()
+    except Exception:
+        conn.close()
+        raise HTTPException(status_code=409, detail="portail_id déjà utilisé.")
+    conn.close()
+    return {"message": "Portail créé.", "portail_id": p.portail_id}
+
+
+@router.patch("/portails/{portail_id}")
+def modifier_portail(portail_id: str, maj: PortailMiseAJour, current_user=Depends(require_role("admin"))):
+    conn = get_connection()
+    row = conn.execute("SELECT id FROM portails WHERE portail_id = ?", (portail_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Portail introuvable.")
+    if maj.nom is not None:
+        conn.execute("UPDATE portails SET nom = ? WHERE portail_id = ?", (maj.nom, portail_id))
+    if maj.type is not None:
+        conn.execute("UPDATE portails SET type = ? WHERE portail_id = ?", (maj.type, portail_id))
+    if maj.description is not None:
+        conn.execute("UPDATE portails SET description = ? WHERE portail_id = ?", (maj.description, portail_id))
+    if maj.actif is not None:
+        conn.execute("UPDATE portails SET actif = ? WHERE portail_id = ?", (int(maj.actif), portail_id))
+    conn.commit()
+    conn.close()
+    return {"message": "Portail mis à jour."}
+
+
+@router.delete("/portails/{portail_id}")
+def supprimer_portail(portail_id: str, current_user=Depends(require_role("admin"))):
+    conn = get_connection()
+    result = conn.execute("DELETE FROM portails WHERE portail_id = ?", (portail_id,))
+    conn.commit()
+    conn.close()
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Portail introuvable.")
+    return {"message": "Portail supprimé."}
+
+
 # ─── Commande manuelle ─────────────────────────────────────────────────────
 
 @router.post("/portail/{portail_id}/ouvrir")
 def ouvrir_portail(portail_id: str, current_user=Depends(get_current_user)):
     import json as _json
-    # Mapping portailId → (topic MQTT firmware, direction événement)
-    # "sortie_ext" est le nom sémantique correct pour la sortie.
-    # Il publie sur "entree_int" pour rester compatible avec le firmware actuel.
-    PORTAIL_MAP = {
-        "entree_ext": ("entree_ext", "entree"),
-        "entree_int": ("entree_int", "sortie"),   # legacy — conservé pour compatibilité
-        "sortie_ext": ("entree_int", "sortie"),   # nom sémantique → même topic firmware
-    }
-    if portail_id not in PORTAIL_MAP:
-        raise HTTPException(status_code=400, detail="portail_id invalide.")
-    topic_id, direction = PORTAIL_MAP[portail_id]
-    mqtt_client.publish(f"neargate/commande/{topic_id}", _json.dumps({"action": "ouvrir"}))
+    conn = get_connection()
+    portail = conn.execute(
+        "SELECT nom, type FROM portails WHERE portail_id = ? AND actif = 1", (portail_id,)
+    ).fetchone()
+    conn.close()
+    if not portail:
+        raise HTTPException(status_code=400, detail="Portail inconnu ou inactif.")
+    mqtt_client.publish(f"neargate/commande/{portail_id}", _json.dumps({"action": "ouvrir"}))
     logger.info("Ouverture manuelle du portail %s par %s", portail_id, current_user["email"])
     conn = get_connection()
     conn.execute(
         "INSERT INTO evenements (badge_uuid, rssi, action, direction, portail_id) VALUES (?, ?, ?, ?, ?)",
-        ("manuel", None, "ouverture_manuelle", direction, portail_id),
+        ("manuel", None, "ouverture_manuelle", portail["type"], portail_id),
     )
     conn.commit()
     conn.close()

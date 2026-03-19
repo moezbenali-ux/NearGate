@@ -1,13 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Download, Copy, Check, Code2 } from 'lucide-react'
-
-const PORTAILS_PREDEFINIS = [
-  { value: 'entree_ext', label: 'Entrée — côté extérieur' },
-  { value: 'entree_int', label: 'Entrée — côté intérieur' },
-  { value: 'sortie_ext', label: 'Sortie — côté extérieur' },
-  { value: 'sortie_int', label: 'Sortie — côté intérieur' },
-  { value: 'custom',     label: 'Autre (saisie libre)' },
-]
+import { api } from '../api'
 
 const DEFAULTS = {
   emplacement:   '',
@@ -368,9 +361,14 @@ void loop() {
 }
 
 export default function GenerateurFirmware() {
-  const [form,    setForm]    = useState(DEFAULTS)
-  const [code,    setCode]    = useState('')
-  const [copie,   setCopie]   = useState(false)
+  const [form,     setForm]     = useState(DEFAULTS)
+  const [code,     setCode]     = useState('')
+  const [copie,    setCopie]    = useState(false)
+  const [portails, setPortails] = useState([])
+
+  useEffect(() => {
+    api.portails().then(liste => setPortails(liste)).catch(() => {})
+  }, [])
 
   function maj(champ, valeur) {
     setForm(f => ({ ...f, [champ]: valeur }))
@@ -429,9 +427,12 @@ export default function GenerateurFirmware() {
           <div className="field" style={{ marginBottom: form.portail_id === 'custom' ? 8 : 20 }}>
             <label>Identifiant du portail</label>
             <select value={form.portail_id} onChange={e => maj('portail_id', e.target.value)}>
-              {PORTAILS_PREDEFINIS.map(p => (
-                <option key={p.value} value={p.value}>{p.label}</option>
+              {portails.map(p => (
+                <option key={p.portail_id} value={p.portail_id}>
+                  {p.nom} ({p.portail_id})
+                </option>
               ))}
+              <option value="custom">Autre (saisie libre)</option>
             </select>
             <div className="text-muted text-sm" style={{ marginTop: 4 }}>
               Client MQTT généré : <code>neargate-esp32-{portailId || '…'}</code>

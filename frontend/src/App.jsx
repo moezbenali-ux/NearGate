@@ -8,6 +8,7 @@ import Gestionnaires from './pages/Gestionnaires'
 import Radar from './pages/Radar'
 import Supervision from './pages/Supervision'
 import GenerateurFirmware from './pages/GenerateurFirmware'
+import Portails from './pages/Portails'
 import Mobile from './pages/Mobile'
 import MotDePasseOublie from './pages/MotDePasseOublie'
 import ReinitialiserMdp from './pages/ReinitialiserMdp'
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="badges" element={<Badges />} />
           <Route path="historique" element={<Historique />} />
           <Route path="configuration" element={<Configuration />} />
+          <Route path="portails" element={<Portails />} />
           <Route path="gestionnaires" element={<Gestionnaires />} />
           <Route path="radar" element={<Radar />} />
           <Route path="supervision" element={<Supervision />} />

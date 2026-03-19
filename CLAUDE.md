@@ -61,7 +61,7 @@ Utilisateur → https://app.neargate.fr → Cloudflare Tunnel → Nginx → Fast
 - [x] `.env.example` créé, `.env` hors git
 - [x] Rôles appliqués — `require_role("admin")` sur /utilisateurs (CRUD) et PUT /config
 - [ ] Serveur central Scaleway inexistant (multi-tenant)
-- [ ] Portails hardcodés dans `main.py` (pas encore dynamiques)
+- [x] Portails dynamiques — table `portails` en DB, CRUD `/api/portails`, machine d'états générique
 - [x] SSE opérationnel — endpoint `/api/events`, broadcast depuis mqtt_client + ouvrir_portail
 - [ ] Pas d'alertes email/push (ESP32 hors ligne, batterie faible)
 - [ ] Pas d'export CSV/PDF historique
@@ -115,11 +115,15 @@ Utilisateur → https://app.neargate.fr → Cloudflare Tunnel → Nginx → Fast
 ✓ Dashboard en temps réel via SSE — sse.py + /api/events + EventSource
 ```
 
-### Session 3 — Portails dynamiques
+### ✅ Session 3 — Portails dynamiques (terminée)
 ```
-Rends les portails configurables dynamiquement depuis le dashboard
-sans modifier le code — table portails en base,
-supprime les portails hardcodés dans main.py
+✓ Table portails (id, portail_id, nom, type, description, actif)
+✓ 2 defaults : entree_ext / sortie_ext
+✓ CRUD /api/portails (GET libre, POST/PATCH/DELETE admin)
+✓ Machine d'états MQTT générique (direction = état du badge, pas du portail)
+✓ ouvrir_portail lit la DB (plus de PORTAIL_MAP)
+✓ Page Portails.jsx avec édition inline
+✓ Mobile.jsx et GenerateurFirmware.jsx chargent depuis /api/portails
 ```
 
 ### Session 4 — Nettoyage

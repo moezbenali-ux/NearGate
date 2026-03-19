@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '../api'
 
 const user = () => JSON.parse(localStorage.getItem('ng_user') || '{}')
@@ -51,11 +51,22 @@ function BoutonPortail({ label, portailId }) {
 
 export default function Mobile() {
   const nom = user().nom || 'Collaborateur'
+  const [portails, setPortails] = useState([])
 
-  if (!localStorage.getItem('ng_token')) {
-    window.location.href = '/login'
-    return null
-  }
+  useEffect(() => {
+    if (!localStorage.getItem('ng_token')) {
+      window.location.href = '/login'
+      return
+    }
+    api.portails()
+      .then(liste => setPortails(liste.filter(p => p.actif)))
+      .catch(() => {})
+  }, [])
+
+  if (!localStorage.getItem('ng_token')) return null
+
+  const icone = (type) => type === 'entree' ? '🚗' : '🚶'
+  const label = (p) => `${icone(p.type)}  ${p.nom}`
 
   return (
     <div style={{
@@ -74,8 +85,13 @@ export default function Mobile() {
       <p style={{ color: '#64748B', margin: '0 0 48px', fontSize: 14 }}>Bonjour, {nom}</p>
 
       <div style={{ width: '100%', maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <BoutonPortail label="🚗  Entrée — Ouvrir le portail" portailId="entree_ext" />
-        <BoutonPortail label="🚶  Sortie — Ouvrir le portail" portailId="sortie_ext" />
+        {portails.length === 0 ? (
+          <p style={{ color: '#64748B', textAlign: 'center', fontSize: 14 }}>Chargement des portails…</p>
+        ) : (
+          portails.map(p => (
+            <BoutonPortail key={p.portail_id} label={label(p)} portailId={p.portail_id} />
+          ))
+        )}
       </div>
 
       <button

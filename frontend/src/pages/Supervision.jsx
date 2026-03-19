@@ -4,7 +4,7 @@ import { api } from '../api'
 
 function tempsRelatif(dateStr) {
   if (!dateStr) return null
-  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
+  const diff = Math.floor((Date.now() - new Date(dateStr.replace(' ', 'T') + 'Z').getTime()) / 1000)
   if (diff < 60)  return `il y a ${diff}s`
   if (diff < 3600) return `il y a ${Math.floor(diff / 60)}min`
   if (diff < 86400) return `il y a ${Math.floor(diff / 3600)}h`

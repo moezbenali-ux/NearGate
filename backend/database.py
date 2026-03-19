@@ -84,6 +84,19 @@ def init_db():
         )
     """)
 
+    # Table des portails (remplace les portail_ids hardcodés dans le code)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS portails (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            portail_id TEXT UNIQUE NOT NULL,
+            nom TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'entree',
+            description TEXT,
+            actif INTEGER NOT NULL DEFAULT 1,
+            cree_le TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+
     # Migration : ajout colonnes si absentes
     for col, definition in [
         ("batterie_pct",    "INTEGER"),
@@ -103,7 +116,15 @@ def init_db():
         except Exception:
             pass  # Colonne déjà présente
 
-    # Valeurs par défaut
+    # Portails par défaut (premier démarrage uniquement)
+    cursor.executemany("""
+        INSERT OR IGNORE INTO portails (portail_id, nom, type, description) VALUES (?, ?, ?, ?)
+    """, [
+        ("entree_ext", "Entrée extérieure", "entree", "ESP32 côté extérieur — détecte les véhicules entrant"),
+        ("sortie_ext", "Sortie extérieure", "sortie",  "ESP32 côté intérieur — détecte les véhicules sortant"),
+    ])
+
+    # Valeurs par défaut de configuration
     cursor.executemany("""
         INSERT OR IGNORE INTO config (cle, valeur) VALUES (?, ?)
     """, [

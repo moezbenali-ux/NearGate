@@ -80,6 +80,12 @@ export const api = {
   // Supervision
   supervision: () => req('GET', '/supervision'),
 
+  // Portails
+  portails: () => req('GET', '/portails'),
+  creerPortail: (data) => req('POST', '/portails', data),
+  modifierPortail: (portailId, data) => req('PATCH', `/portails/${portailId}`, data),
+  supprimerPortail: (portailId) => req('DELETE', `/portails/${portailId}`),
+
   // Commande manuelle
   ouvrirPortail: (portailId) => req('POST', `/portail/${portailId}/ouvrir`),
 

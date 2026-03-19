@@ -257,6 +257,32 @@ def creer_utilisateur(u: UtilisateurCreation):
         conn.close()
         raise HTTPException(status_code=409, detail="Email déjà utilisé.")
     conn.close()
+
+    base_url = os.getenv("BASE_URL", "https://app.neargate.fr")
+    try:
+        msg = MIMEText(
+            f"Bonjour {u.nom},\n\n"
+            f"Un accès NearGate a été créé pour vous.\n\n"
+            f"  Adresse de connexion : {base_url}\n"
+            f"  Email               : {u.email}\n"
+            f"  Mot de passe        : {u.mot_de_passe}\n\n"
+            f"Nous vous recommandons de changer votre mot de passe après votre première connexion.\n\n"
+            f"— NearGate",
+            "plain", "utf-8"
+        )
+        msg["Subject"] = "Votre accès NearGate"
+        msg["From"]    = os.getenv("SMTP_USER", "noreply@neargate.fr")
+        msg["To"]      = u.email
+
+        with smtplib.SMTP(os.getenv("SMTP_HOST", "mail.gandi.net"), int(os.getenv("SMTP_PORT", 587))) as smtp:
+            smtp.starttls()
+            smtp.login(os.getenv("SMTP_USER"), os.getenv("SMTP_PASSWORD"))
+            smtp.send_message(msg)
+
+        logger.info("Email de bienvenue envoyé à %s", u.email)
+    except Exception as e:
+        logger.error("Erreur envoi email bienvenue : %s", e)
+
     return {"message": "Utilisateur créé."}
 
 

@@ -11,7 +11,13 @@ from database import get_connection
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("JWT_SECRET", "changez-cette-cle")
+SECRET_KEY = os.getenv("JWT_SECRET")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "JWT_SECRET est absent du fichier .env. "
+        "Générez une clé avec : python3 -c \"import secrets; print(secrets.token_hex(32))\" "
+        "puis ajoutez-la dans backend/.env"
+    )
 ALGORITHM  = "HS256"
 EXPIRE_HEURES = 8
 

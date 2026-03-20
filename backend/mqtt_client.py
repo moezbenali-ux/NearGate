@@ -77,6 +77,15 @@ def _get_portail_nom(portail_id):
     return row["nom"] if row else portail_id
 
 
+def _get_portail_type(portail_id):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT type FROM portails WHERE portail_id = ?", (portail_id,)
+    ).fetchone()
+    conn.close()
+    return row["type"] if row else "entree"
+
+
 def _get_etat(uuid):
     conn = get_connection()
     row = conn.execute("SELECT * FROM badges_etat WHERE uuid = ?", (uuid,)).fetchone()
@@ -135,9 +144,10 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id):
         _enregistrer_evenement(uuid, rssi, "refus", portail_id, "inconnu")
         return
 
-    seuil_entree = int(_get_config("rssi_seuil_entree") or -70)
-    seuil_sortie = int(_get_config("rssi_seuil_sortie") or -55)
-    rssi_oubli   = int(_get_config("rssi_oubli") or -90)
+    seuil_entree  = int(_get_config("rssi_seuil_entree") or -70)
+    seuil_sortie  = int(_get_config("rssi_seuil_sortie") or -55)
+    rssi_oubli    = int(_get_config("rssi_oubli") or -90)
+    portail_type  = _get_portail_type(portail_id)
 
     etat_row = _get_etat(uuid)
     etat = etat_row["etat"] if etat_row else "libre"
@@ -148,22 +158,27 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id):
         _set_etat(uuid, "libre", rssi)
         return
 
-    if etat == "libre":
-        if rssi >= seuil_entree:
-            logger.info("Badge %s — ENTRÉE autorisée via %s (RSSI %d)", uuid, portail_id, rssi)
-            mqtt_client_instance.publish(
-                TOPIC_COMMANDE.format(portail_id=portail_id),
-                json.dumps({"action": "ouvrir"})
-            )
-            _set_etat(uuid, "interieur", rssi)
-            _enregistrer_evenement(uuid, rssi, "ouverture", portail_id, "entree")
+    if portail_type == "entree":
+        # Un portail d'entrée ne déclenche que des entrées (badge LIBRE)
+        if etat == "libre":
+            if rssi >= seuil_entree:
+                logger.info("Badge %s — ENTRÉE autorisée via %s (RSSI %d)", uuid, portail_id, rssi)
+                mqtt_client_instance.publish(
+                    TOPIC_COMMANDE.format(portail_id=portail_id),
+                    json.dumps({"action": "ouvrir"})
+                )
+                _set_etat(uuid, "interieur", rssi)
+                _enregistrer_evenement(uuid, rssi, "ouverture", portail_id, "entree")
+            else:
+                logger.debug("Badge %s LIBRE — RSSI insuffisant (portail=%s, RSSI=%d)",
+                             uuid, portail_id, rssi)
         else:
-            logger.debug("Badge %s LIBRE — RSSI insuffisant (portail=%s, RSSI=%d)",
-                         uuid, portail_id, rssi)
+            _update_last_seen(uuid, rssi)
+            logger.debug("Badge %s déjà INTÉRIEUR — portail entrée ignoré", uuid)
 
-    elif etat == "interieur":
-        _update_last_seen(uuid, rssi)
-
+    elif portail_type == "sortie":
+        # Un portail de sortie déclenche une sortie dès que le RSSI est suffisant,
+        # quel que soit l'état du badge (évite les fausses entrées avec un seul radar)
         if rssi >= seuil_sortie:
             logger.info("Badge %s — SORTIE autorisée via %s (RSSI %d)", uuid, portail_id, rssi)
             mqtt_client_instance.publish(
@@ -173,7 +188,8 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id):
             _set_etat(uuid, "libre", rssi)
             _enregistrer_evenement(uuid, rssi, "ouverture", portail_id, "sortie")
         else:
-            logger.debug("Badge %s INTÉRIEUR — RSSI insuffisant (portail=%s, RSSI=%d)",
+            _update_last_seen(uuid, rssi)
+            logger.debug("Badge %s — RSSI insuffisant pour sortie (portail=%s, RSSI=%d)",
                          uuid, portail_id, rssi)
 
 

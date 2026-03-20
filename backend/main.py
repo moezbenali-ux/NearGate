@@ -183,7 +183,7 @@ def mot_de_passe_oublie(body: DemandeResetMdp):
                 "plain", "utf-8"
             )
             msg["Subject"] = "Réinitialisation de votre mot de passe NearGate"
-            msg["From"]    = os.getenv("SMTP_USER", "noreply@neargate.fr")
+            msg["From"]    = f"NearGate <{os.getenv('SMTP_USER', 'noreply@neargate.fr')}>"
             msg["To"]      = body.email
 
             with smtplib.SMTP(os.getenv("SMTP_HOST", "mail.gandi.net"), int(os.getenv("SMTP_PORT", 587))) as smtp:
@@ -271,7 +271,7 @@ def creer_utilisateur(u: UtilisateurCreation):
             "plain", "utf-8"
         )
         msg["Subject"] = "Votre accès NearGate"
-        msg["From"]    = os.getenv("SMTP_USER", "noreply@neargate.fr")
+        msg["From"]    = f"NearGate <{os.getenv('SMTP_USER', 'noreply@neargate.fr')}>"
         msg["To"]      = u.email
 
         with smtplib.SMTP(os.getenv("SMTP_HOST", "mail.gandi.net"), int(os.getenv("SMTP_PORT", 587))) as smtp:

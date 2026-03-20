@@ -74,6 +74,7 @@ export const api = {
   creerUtilisateur: (data) => req('POST', '/utilisateurs', data),
   supprimerUtilisateur: (id) => req('DELETE', `/utilisateurs/${id}`),
   reactiverUtilisateur: (id) => req('POST', `/utilisateurs/${id}/reactiver`),
+  modifierUtilisateur: (id, data) => req('PATCH', `/utilisateurs/${id}`, data),
 
   // Radar BLE
   radarScan: (duree = 5) => req('GET', `/radar/scan?duree=${duree}`),

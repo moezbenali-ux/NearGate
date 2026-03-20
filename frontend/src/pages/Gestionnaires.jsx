@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, RefreshCw, UserX } from 'lucide-react'
+import { Plus, RefreshCw, UserX, Pencil, Check, X } from 'lucide-react'
 import { api } from '../api'
 import ImportCSV from '../components/ImportCSV'
 
@@ -12,6 +12,7 @@ export default function Gestionnaires() {
   const [users, setUsers] = useState([])
   const [form,  setForm]  = useState({ email: '', nom: '', mot_de_passe: '', role: 'gestionnaire' })
   const [notif, setNotif] = useState(null)
+  const [edition, setEdition] = useState(null) // { id, nom, email, role }
 
   async function charger() { setUsers(await api.utilisateurs()) }
   useEffect(() => { charger() }, [])
@@ -43,6 +44,15 @@ export default function Gestionnaires() {
     await api.reactiverUtilisateur(u.id)
     afficherNotif('Compte réactivé.')
     charger()
+  }
+
+  async function sauvegarderEdition() {
+    try {
+      await api.modifierUtilisateur(edition.id, { nom: edition.nom, email: edition.email, role: edition.role })
+      afficherNotif('Compte modifié.')
+      setEdition(null)
+      charger()
+    } catch (err) { afficherNotif('Erreur lors de la modification.', 'err') }
   }
 
   return (
@@ -100,7 +110,7 @@ export default function Gestionnaires() {
 
       <div className="box">
         <div className="box-header">
-          <h2>Comptes actifs ({users.filter(u => u.actif).length})</h2>
+          <h2>Comptes ({users.length})</h2>
           <button className="btn btn-ghost btn-sm" onClick={charger}><RefreshCw size={13} /> Actualiser</button>
         </div>
         <div className="table-wrap">
@@ -109,17 +119,35 @@ export default function Gestionnaires() {
             : (
               <table>
                 <thead>
-                  <tr><th>Nom</th><th>Email</th><th>Rôle</th><th>Statut</th><th>Créé le</th><th>Action</th></tr>
+                  <tr><th>Nom</th><th>Email</th><th>Rôle</th><th>Statut</th><th>Créé le</th><th>Actions</th></tr>
                 </thead>
                 <tbody>
-                  {users.map(u => (
+                  {users.map(u => edition?.id === u.id ? (
+                    <tr key={u.id}>
+                      <td><input value={edition.nom} onChange={e => setEdition(ed => ({ ...ed, nom: e.target.value }))} style={{ width: '100%' }} /></td>
+                      <td><input value={edition.email} onChange={e => setEdition(ed => ({ ...ed, email: e.target.value }))} style={{ width: '100%' }} /></td>
+                      <td>
+                        <select value={edition.role} onChange={e => setEdition(ed => ({ ...ed, role: e.target.value }))}>
+                          <option value="gestionnaire">Gestionnaire</option>
+                          <option value="admin">Administrateur</option>
+                        </select>
+                      </td>
+                      <td><span className={`badge ${u.actif ? 'actif' : 'inactif'}`}>{u.actif ? 'Actif' : 'Inactif'}</span></td>
+                      <td className="text-muted text-sm">{u.cree_le?.slice(0, 10)}</td>
+                      <td style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn btn-primary btn-sm" onClick={sauvegarderEdition}><Check size={13} /> Sauvegarder</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setEdition(null)}><X size={13} /></button>
+                      </td>
+                    </tr>
+                  ) : (
                     <tr key={u.id}>
                       <td><strong>{u.nom}</strong></td>
                       <td className="text-muted">{u.email}</td>
                       <td><span className={`badge ${u.role === 'admin' ? 'entree' : 'sortie'}`}>{u.role}</span></td>
                       <td><span className={`badge ${u.actif ? 'actif' : 'inactif'}`}>{u.actif ? 'Actif' : 'Inactif'}</span></td>
                       <td className="text-muted text-sm">{u.cree_le?.slice(0, 10)}</td>
-                      <td>
+                      <td style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setEdition({ id: u.id, nom: u.nom, email: u.email, role: u.role })}><Pencil size={13} /> Modifier</button>
                         {u.actif
                           ? <button className="btn btn-danger btn-sm" onClick={() => supprimer(u)}><UserX size={13} /> Désactiver</button>
                           : <button className="btn btn-ghost btn-sm" onClick={() => reactiver(u)}><RefreshCw size={13} /> Réactiver</button>

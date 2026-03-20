@@ -120,6 +120,11 @@ class ResetMdp(BaseModel):
 class UtilisateurCreation(BaseModel):
     email: str
     nom: str
+
+class UtilisateurMiseAJour(BaseModel):
+    nom: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None
     mot_de_passe: str
     role: Optional[str] = "gestionnaire"
 
@@ -329,6 +334,20 @@ def supprimer_utilisateur(user_id: int):
     conn.commit()
     conn.close()
     return {"message": "Utilisateur désactivé."}
+
+
+@router.patch("/utilisateurs/{user_id}", dependencies=[Depends(require_role("admin"))])
+def modifier_utilisateur(user_id: int, u: UtilisateurMiseAJour):
+    conn = get_connection()
+    if u.nom:
+        conn.execute("UPDATE utilisateurs SET nom = ? WHERE id = ?", (u.nom, user_id))
+    if u.email:
+        conn.execute("UPDATE utilisateurs SET email = ? WHERE id = ?", (u.email, user_id))
+    if u.role:
+        conn.execute("UPDATE utilisateurs SET role = ? WHERE id = ?", (u.role, user_id))
+    conn.commit()
+    conn.close()
+    return {"message": "Utilisateur modifié."}
 
 
 @router.post("/utilisateurs/{user_id}/reactiver", dependencies=[Depends(require_role("admin"))])

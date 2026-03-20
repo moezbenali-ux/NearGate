@@ -120,13 +120,14 @@ class ResetMdp(BaseModel):
 class UtilisateurCreation(BaseModel):
     email: str
     nom: str
+    mot_de_passe: str
+    role: Optional[str] = "gestionnaire"
+
 
 class UtilisateurMiseAJour(BaseModel):
     nom: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
-    mot_de_passe: str
-    role: Optional[str] = "gestionnaire"
 
 
 class PortailCreation(BaseModel):

@@ -252,7 +252,7 @@ def on_message(client, userdata, msg):
 
         uuid       = payload.get("uuid", "").strip()
         rssi       = int(payload.get("rssi", -999))
-        portail_id = payload.get("portail_id", ESP32_EXT)
+        portail_id = payload.get("portail_id", "")
         batterie   = payload.get("batterie")
 
         if not uuid:

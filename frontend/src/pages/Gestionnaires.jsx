@@ -38,6 +38,13 @@ export default function Gestionnaires() {
     charger()
   }
 
+  async function reactiver(u) {
+    if (!confirm(`Réactiver le compte de "${u.nom}" ?`)) return
+    await api.reactiverUtilisateur(u.id)
+    afficherNotif('Compte réactivé.')
+    charger()
+  }
+
   return (
     <div className="fade-up">
       <div className="page-header">
@@ -113,9 +120,10 @@ export default function Gestionnaires() {
                       <td><span className={`badge ${u.actif ? 'actif' : 'inactif'}`}>{u.actif ? 'Actif' : 'Inactif'}</span></td>
                       <td className="text-muted text-sm">{u.cree_le?.slice(0, 10)}</td>
                       <td>
-                        <button className="btn btn-danger btn-sm" onClick={() => supprimer(u)}>
-                          <UserX size={13} /> Désactiver
-                        </button>
+                        {u.actif
+                          ? <button className="btn btn-danger btn-sm" onClick={() => supprimer(u)}><UserX size={13} /> Désactiver</button>
+                          : <button className="btn btn-ghost btn-sm" onClick={() => reactiver(u)}><RefreshCw size={13} /> Réactiver</button>
+                        }
                       </td>
                     </tr>
                   ))}

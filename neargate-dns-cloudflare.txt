@@ -1,0 +1,28 @@
+;;
+;; Domain:     neargate.fr.
+;; Mise à jour : 2026-03-20 — DKIM Resend, SPF ~all, DMARC ajouté
+;;
+
+;; A Records
+neargate.fr.	1	IN	A	217.70.184.38
+
+;; CNAME Records
+app.neargate.fr.	1	IN	CNAME	2cb366c0-7ae3-4ab7-a94b-41c0fa0378f9.cfargotunnel.com.
+webmail.neargate.fr.	1	IN	CNAME	webmail.gandi.net.
+www.neargate.fr.	1	IN	CNAME	webredir.vip.gandi.net.
+
+;; MX Records
+neargate.fr.	1	IN	MX	50 fb.mail.gandi.net.
+neargate.fr.	1	IN	MX	10 spool.mail.gandi.net.
+
+;; SRV Records
+_imaps._tcp.neargate.fr.	1	IN	SRV	0 1 993 mail.gandi.net.
+_imap._tcp.neargate.fr.	1	IN	SRV	0 0 0 .
+_pop3s._tcp.neargate.fr.	1	IN	SRV	10 1 995 mail.gandi.net.
+_pop3._tcp.neargate.fr.	1	IN	SRV	0 0 0 .
+_submission._tcp.neargate.fr.	1	IN	SRV	0 1 465 mail.gandi.net.
+
+;; TXT Records
+neargate.fr.	1	IN	TXT	"v=spf1 include:_mailcust.gandi.net ~all"
+_dmarc.neargate.fr.	1	IN	TXT	"v=DMARC1; p=none; rua=mailto:noreply@neargate.fr"
+resend._domainkey.neargate.fr.	3600	IN	TXT	"v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDTzvVo+H/ibfRWTx3lGCjMIaEmoXbzsdpCbmRxqjUq3EtstSU0CDPG/9w3CLJ4RRn1pyyf6UEmtjlSW0RtqGYbGlUhxWZXm9V9+xLxIMlhK4wEZynpFE3Hvdtf4pPOdK0J6IKf2G2lgKldMYKoTzVWeEMI4eI+bV4vbe9If0l+rQIDAQAB"

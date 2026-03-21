@@ -344,7 +344,7 @@ void setup() {
     Serial.printf("[OTA] Erreur %u\n", error);
   });
   ArduinoOTA.begin();
-  Serial.printf("[OTA] Prêt — hostname: %s\n", MQTT_CLIENT_ID);
+  Serial.printf("[OTA] Prêt — hostname: %s\n", mqtt_client_id);
 
   // MQTT
   mqttClient.setServer(MQTT_SERVER, MQTT_PORT);

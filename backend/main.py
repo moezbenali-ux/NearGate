@@ -95,6 +95,7 @@ def require_role(role: str):
 
 class BadgeCreation(BaseModel):
     uuid: str
+    minor: Optional[int] = None  # Minor iBeacon — requis pour badges KKM K7P multi-UUID
     nom: str
     actif: Optional[bool] = True
 
@@ -372,18 +373,19 @@ def lister_badges(current_user=Depends(get_current_user)):
 
 @router.post("/badges", status_code=status.HTTP_201_CREATED)
 def ajouter_badge(badge: BadgeCreation, current_user=Depends(get_current_user)):
+    badge_key = f"{badge.uuid.strip()}:{badge.minor}" if badge.minor is not None else badge.uuid.strip()
     conn = get_connection()
     try:
         conn.execute(
             "INSERT INTO badges (uuid, nom, actif) VALUES (?, ?, ?)",
-            (badge.uuid.strip(), badge.nom.strip(), int(badge.actif)),
+            (badge_key, badge.nom.strip(), int(badge.actif)),
         )
         conn.commit()
     except Exception:
         conn.close()
         raise HTTPException(status_code=409, detail="UUID déjà enregistré.")
     conn.close()
-    return {"message": "Badge ajouté.", "uuid": badge.uuid}
+    return {"message": "Badge ajouté.", "uuid": badge_key}
 
 
 @router.patch("/badges/{uuid}")
@@ -557,11 +559,12 @@ async def radar_scan(duree: int = 5, current_user=Depends(get_current_user)):
                     batterie = svc_data[10]
                     break
 
-            # Vérifier si ce badge est déjà enregistré
+            # Vérifier si ce badge est déjà enregistré (clé composite uuid:minor)
+            badge_key_scan = f"{uuid_ibeacon}:{minor_ibeacon}" if (uuid_ibeacon and minor_ibeacon is not None) else uuid_ibeacon
             conn = get_connection()
             badge = conn.execute(
-                "SELECT nom, actif FROM badges WHERE uuid = ?", (uuid_ibeacon,)
-            ).fetchone() if uuid_ibeacon else None
+                "SELECT nom, actif FROM badges WHERE uuid = ?", (badge_key_scan,)
+            ).fetchone() if badge_key_scan else None
             conn.close()
 
             resultats.append({
@@ -582,9 +585,10 @@ async def radar_scan(duree: int = 5, current_user=Depends(get_current_user)):
         conn_bat = get_connection()
         for ap in resultats:
             if ap["uuid_ibeacon"] and ap["enregistre"] and ap["batterie"] is not None:
+                bk = f"{ap['uuid_ibeacon']}:{ap['minor']}" if ap["minor"] is not None else ap["uuid_ibeacon"]
                 conn_bat.execute(
                     "UPDATE badges SET batterie_pct = ?, batterie_vue_le = ? WHERE uuid = ?",
-                    (ap["batterie"], now, ap["uuid_ibeacon"]),
+                    (ap["batterie"], now, bk),
                 )
         conn_bat.commit()
         conn_bat.close()

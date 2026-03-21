@@ -298,12 +298,16 @@ def on_message(client, userdata, msg):
             return
 
         uuid       = payload.get("uuid", "").strip()
+        minor      = payload.get("minor")
         rssi       = int(payload.get("rssi", -999))
         portail_id = payload.get("portail_id", "")
         batterie   = payload.get("batterie")
 
         if not uuid:
             return
+
+        # Clé composite badge : "uuid:minor" si minor présent, sinon uuid seul (legacy)
+        badge_key = f"{uuid}:{minor}" if minor is not None else uuid
 
         # Mise à jour dernière vue + batterie si disponible
         try:
@@ -312,19 +316,19 @@ def on_message(client, userdata, msg):
             if batterie is not None:
                 conn.execute(
                     "UPDATE badges SET derniere_vue_le = ?, batterie_pct = ?, batterie_vue_le = ? WHERE uuid = ?",
-                    (now, int(batterie), now, uuid),
+                    (now, int(batterie), now, badge_key),
                 )
             else:
                 conn.execute(
                     "UPDATE badges SET derniere_vue_le = ? WHERE uuid = ?",
-                    (now, uuid),
+                    (now, badge_key),
                 )
             conn.commit()
             conn.close()
         except Exception as e:
             logger.warning("Erreur mise à jour badge : %s", e)
 
-        traiter_detection(client, uuid, rssi, portail_id)
+        traiter_detection(client, badge_key, rssi, portail_id)
 
     except Exception as e:
         logger.error("Erreur traitement message MQTT : %s", e)

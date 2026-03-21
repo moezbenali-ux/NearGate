@@ -44,9 +44,9 @@ const char* MQTT_PASS     = "NearGate-MQTT-2026!";
 //   ESP32 côté INTÉRIEUR → "entree_int"
 const char* PORTAIL_ID = "entree_int";  // ← changer selon l'ESP32
 
-// UUID iBeacon du badge K7P à détecter
-// Format : 8-4-4-4-12 en minuscules
-const char* BEACON_UUID_CIBLE = "9730c8c0-24fe-327a-3f63-623c87e24797";
+// Filtre UUID optionnel — laisser vide "" pour accepter tous les iBeacons
+// Exemple : "9730c8c0-24fe-327a-3f63-623c87e24797" pour un groupe précis
+const char* BEACON_UUID_FILTRE = "";
 
 // Seuil minimum pour publier vers le backend (permissif — c'est le backend qui décide)
 // Ne pas dépasser -90 pour ne pas rater de détections
@@ -164,16 +164,18 @@ void publier_heartbeat() {
   Serial.printf("[MQTT] Heartbeat publié sur %s\n", TOPIC_PING);
 }
 
-void publier_detection(const String& uuid, int rssi, int batterie) {
+void publier_detection(const String& uuid, int major, int minor, int rssi, int batterie) {
   if (!mqttClient.connected()) return;
 
-  StaticJsonDocument<160> doc;
+  StaticJsonDocument<200> doc;
   doc["uuid"]       = uuid;
+  doc["major"]      = major;
+  doc["minor"]      = minor;
   doc["rssi"]       = rssi;
   doc["portail_id"] = PORTAIL_ID;
   if (batterie >= 0) doc["batterie"] = batterie;
 
-  char payload[160];
+  char payload[200];
   serializeJson(doc, payload);
   mqttClient.publish(TOPIC_DETECTION, payload);
   Serial.printf("[MQTT] Publié : %s\n", payload);
@@ -233,8 +235,12 @@ class CallbackBLE : public BLEAdvertisedDeviceCallbacks {
 
     String uuid = String(uuid_buf);
 
-    // Filtre : on ne traite que l'UUID cible
-    if (!uuid.equalsIgnoreCase(BEACON_UUID_CIBLE)) return;
+    // Filtre UUID optionnel (si BEACON_UUID_FILTRE est non vide)
+    if (strlen(BEACON_UUID_FILTRE) > 0 && !uuid.equalsIgnoreCase(BEACON_UUID_FILTRE)) return;
+
+    // Extraction Major et Minor (octets 20-21 et 22-23)
+    int major = ((uint8_t)dataStr[20] << 8) | (uint8_t)dataStr[21];
+    int minor = ((uint8_t)dataStr[22] << 8) | (uint8_t)dataStr[23];
 
     // Lecture batterie Feasycom (service data UUID fff0, dernier octet)
     int batterie = -1;
@@ -245,20 +251,23 @@ class CallbackBLE : public BLEAdvertisedDeviceCallbacks {
       }
     }
 
+    // Clé unique par badge : "uuid:minor"
+    String badge_key = uuid + ":" + String(minor);
+
     int rssi_brut = device.getRSSI();
-    EntreeKalman* etat = obtenir_etat(uuid);
+    EntreeKalman* etat = obtenir_etat(badge_key);
     if (!etat) return;
 
     float rssi_filtre = kalman_filtrer(etat->kalman, (float)rssi_brut);
 
-    Serial.printf("[BLE] UUID: %s | RSSI brut: %d dBm | RSSI filtré: %.1f dBm | Batterie: %d%%\n",
-                  uuid.c_str(), rssi_brut, rssi_filtre, batterie);
+    Serial.printf("[BLE] UUID: %s | Major: %d | Minor: %d | RSSI brut: %d dBm | RSSI filtré: %.1f dBm | Batterie: %d%%\n",
+                  uuid.c_str(), major, minor, rssi_brut, rssi_filtre, batterie);
 
     // Seuil RSSI atteint ?
     if ((int)rssi_filtre >= RSSI_SEUIL) {
       etat->compteur_confirmations++;
-      Serial.printf("[BLE] Confirmation %d/%d\n",
-                    etat->compteur_confirmations, CONFIRMATIONS_REQUISES);
+      Serial.printf("[BLE] Confirmation %d/%d (badge %s)\n",
+                    etat->compteur_confirmations, CONFIRMATIONS_REQUISES, badge_key.c_str());
 
       if (etat->compteur_confirmations >= CONFIRMATIONS_REQUISES) {
         unsigned long maintenant = millis();
@@ -268,7 +277,7 @@ class CallbackBLE : public BLEAdvertisedDeviceCallbacks {
           etat->compteur_confirmations   = 0;
 
           // Publication MQTT → le backend décide d'ouvrir ou non
-          publier_detection(uuid, (int)rssi_filtre, batterie);
+          publier_detection(uuid, major, minor, (int)rssi_filtre, batterie);
         } else {
           Serial.println("[BLE] Anti-rebond actif, ouverture ignorée.");
           etat->compteur_confirmations = 0;

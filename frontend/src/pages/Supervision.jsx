@@ -59,6 +59,7 @@ function CarteESP32({ esp }) {
         </div>
         <div style={{ fontSize: 12, color: 'var(--slate)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           {esp.ip && <span>IP : <strong style={{ color: 'var(--text)' }}>{esp.ip}</strong></span>}
+          {esp.mac && <span>MAC : <strong style={{ color: 'var(--electric)', fontFamily: 'monospace' }}>{esp.mac}</strong></span>}
           {esp.vu_le
             ? <span><Clock size={11} style={{ verticalAlign: 'middle', marginRight: 3 }} />Vu {tempsRelatif(esp.vu_le)}</span>
             : <span style={{ color: '#FF6B6B' }}>Jamais vu — vérifiez la connexion</span>

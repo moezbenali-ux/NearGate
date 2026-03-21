@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, CreditCard, History, Settings, LogOut, Zap, Users, Radar, Activity, Menu, X, Cpu, DoorOpen } from 'lucide-react'
+import { LayoutDashboard, CreditCard, History, Settings, LogOut, Zap, Users, Activity, Menu, X, Cpu, DoorOpen } from 'lucide-react'
 import { api } from '../api'
 
 const PAGES = {
@@ -56,9 +56,6 @@ export default function Layout() {
           </NavLink>
           <NavLink to="/portails" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <DoorOpen size={17} /> Portails
-          </NavLink>
-          <NavLink to="/radar" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            <Radar size={17} /> Radar BLE
           </NavLink>
           <NavLink to="/supervision" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <Activity size={17} /> Supervision

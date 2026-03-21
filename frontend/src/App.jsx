@@ -5,7 +5,6 @@ import Badges from './pages/Badges'
 import Historique from './pages/Historique'
 import Configuration from './pages/Configuration'
 import Gestionnaires from './pages/Gestionnaires'
-import Radar from './pages/Radar'
 import Supervision from './pages/Supervision'
 import GenerateurFirmware from './pages/GenerateurFirmware'
 import Portails from './pages/Portails'
@@ -33,7 +32,6 @@ export default function App() {
           <Route path="configuration" element={<Configuration />} />
           <Route path="portails" element={<Portails />} />
           <Route path="gestionnaires" element={<Gestionnaires />} />
-          <Route path="radar" element={<Radar />} />
           <Route path="supervision" element={<Supervision />} />
           <Route path="firmware" element={<GenerateurFirmware />} />
         </Route>

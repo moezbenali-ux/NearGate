@@ -89,6 +89,16 @@ def _get_portail_type(portail_id):
     return row["type"] if row else "entree"
 
 
+def _get_portail_par_mac(mac):
+    """Retourne le portail assigné à cet ESP32 (par MAC), ou None si non assigné."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT portail_id, nom FROM portails WHERE esp32_mac = ? AND actif = 1", (mac,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def _get_etat(uuid):
     conn = get_connection()
     row = conn.execute("SELECT * FROM badges_etat WHERE uuid = ?", (uuid,)).fetchone()
@@ -150,7 +160,7 @@ def _marquer_action(uuid: str):
 
 # ─── Machine d'états ───────────────────────────────────────────────────────
 
-def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id):
+def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id, esp32_mac):
     # Rejette les portails inconnus ou désactivés
     if not _portail_autorise(portail_id):
         logger.debug("Portail %s inconnu ou inactif → détection ignorée", portail_id)
@@ -184,7 +194,7 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id):
                     return
                 logger.info("Badge %s — ENTRÉE autorisée via %s (RSSI %d)", uuid, portail_id, rssi)
                 mqtt_client_instance.publish(
-                    TOPIC_COMMANDE.format(portail_id=portail_id),
+                    f"neargate/commande/{esp32_mac}",
                     json.dumps({"action": "ouvrir"})
                 )
                 _marquer_action(uuid)
@@ -206,7 +216,7 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id):
                 return
             logger.info("Badge %s — SORTIE autorisée via %s (RSSI %d)", uuid, portail_id, rssi)
             mqtt_client_instance.publish(
-                TOPIC_COMMANDE.format(portail_id=portail_id),
+                f"neargate/commande/{esp32_mac}",
                 json.dumps({"action": "ouvrir"})
             )
             _marquer_action(uuid)
@@ -287,24 +297,34 @@ def on_message(client, userdata, msg):
         payload = json.loads(msg.payload.decode())
 
         if msg.topic.startswith("neargate/ping/"):
-            portail_id = msg.topic.split("/")[-1]
+            mac = msg.topic.split("/")[-1]
             now = datetime.now().isoformat(sep=" ", timespec="seconds")
-            if portail_id not in esp32_status:
-                # Récupère le nom depuis la DB (ou utilise portail_id comme fallback)
-                esp32_status[portail_id] = {"label": _get_portail_nom(portail_id)}
-            esp32_status[portail_id]["vu_le"] = now
-            esp32_status[portail_id]["ip"]    = payload.get("ip")
-            logger.debug("Heartbeat reçu de %s (IP: %s)", portail_id, payload.get("ip"))
+            if mac not in esp32_status:
+                portail = _get_portail_par_mac(mac)
+                esp32_status[mac] = {
+                    "label":      portail["nom"] if portail else "Non assigné",
+                    "portail_id": portail["portail_id"] if portail else None,
+                }
+            esp32_status[mac]["vu_le"] = now
+            esp32_status[mac]["ip"]    = payload.get("ip")
+            logger.debug("Heartbeat reçu de %s (IP: %s)", mac, payload.get("ip"))
             return
 
-        uuid       = payload.get("uuid", "").strip()
-        minor      = payload.get("minor")
-        rssi       = int(payload.get("rssi", -999))
-        portail_id = payload.get("portail_id", "")
-        batterie   = payload.get("batterie")
+        uuid      = payload.get("uuid", "").strip()
+        minor     = payload.get("minor")
+        rssi      = int(payload.get("rssi", -999))
+        esp32_mac = payload.get("esp32_id", "")
+        batterie  = payload.get("batterie")
 
-        if not uuid:
+        if not uuid or not esp32_mac:
             return
+
+        # Résolution MAC → portail
+        portail = _get_portail_par_mac(esp32_mac)
+        if not portail:
+            logger.warning("ESP32 %s non assigné à un portail → détection ignorée", esp32_mac)
+            return
+        portail_id = portail["portail_id"]
 
         # Clé composite badge : "uuid:minor" si minor présent, sinon uuid seul (legacy)
         badge_key = f"{uuid}:{minor}" if minor is not None else uuid
@@ -328,22 +348,26 @@ def on_message(client, userdata, msg):
         except Exception as e:
             logger.warning("Erreur mise à jour badge : %s", e)
 
-        traiter_detection(client, badge_key, rssi, portail_id)
+        traiter_detection(client, badge_key, rssi, portail_id, esp32_mac)
 
     except Exception as e:
         logger.error("Erreur traitement message MQTT : %s", e)
 
 
 def demarrer_mqtt():
-    # Initialise esp32_status depuis les portails actifs en DB
-    # (ils apparaîtront en "Jamais vu" jusqu'au premier heartbeat)
+    # Pré-populate esp32_status depuis les portails qui ont un ESP32 assigné
     conn = get_connection()
     portails_actifs = conn.execute(
-        "SELECT portail_id, nom FROM portails WHERE actif = 1"
+        "SELECT portail_id, nom, esp32_mac FROM portails WHERE actif = 1 AND esp32_mac IS NOT NULL"
     ).fetchall()
     conn.close()
     for p in portails_actifs:
-        esp32_status[p["portail_id"]] = {"label": p["nom"], "vu_le": None, "ip": None}
+        esp32_status[p["esp32_mac"]] = {
+            "label":      p["nom"],
+            "portail_id": p["portail_id"],
+            "vu_le":      None,
+            "ip":         None,
+        }
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     if USERNAME:

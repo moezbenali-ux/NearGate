@@ -143,6 +143,7 @@ class PortailMiseAJour(BaseModel):
     nom: Optional[str] = None
     type: Optional[str] = None
     description: Optional[str] = None
+    esp32_mac: Optional[str] = None  # MAC de l'ESP32 assigné (ex: "a4cf12abcdef")
     actif: Optional[bool] = None
 
 
@@ -642,6 +643,13 @@ def modifier_portail(portail_id: str, maj: PortailMiseAJour, current_user=Depend
         conn.execute("UPDATE portails SET description = ? WHERE portail_id = ?", (maj.description, portail_id))
     if maj.actif is not None:
         conn.execute("UPDATE portails SET actif = ? WHERE portail_id = ?", (int(maj.actif), portail_id))
+    if maj.esp32_mac is not None:
+        mac = maj.esp32_mac.strip().lower().replace(":", "") or None
+        conn.execute("UPDATE portails SET esp32_mac = ? WHERE portail_id = ?", (mac, portail_id))
+        # Mettre à jour esp32_status en mémoire
+        from mqtt_client import esp32_status
+        if mac:
+            esp32_status[mac] = {"label": maj.nom or portail_id, "portail_id": portail_id, "vu_le": None, "ip": None}
     conn.commit()
     conn.close()
     return {"message": "Portail mis à jour."}
@@ -665,12 +673,14 @@ def ouvrir_portail(portail_id: str, current_user=Depends(get_current_user)):
     import json as _json
     conn = get_connection()
     portail = conn.execute(
-        "SELECT nom, type FROM portails WHERE portail_id = ? AND actif = 1", (portail_id,)
+        "SELECT nom, type, esp32_mac FROM portails WHERE portail_id = ? AND actif = 1", (portail_id,)
     ).fetchone()
     conn.close()
     if not portail:
         raise HTTPException(status_code=400, detail="Portail inconnu ou inactif.")
-    mqtt_client.publish(f"neargate/commande/{portail_id}", _json.dumps({"action": "ouvrir"}))
+    if not portail["esp32_mac"]:
+        raise HTTPException(status_code=400, detail="Aucun ESP32 assigné à ce portail.")
+    mqtt_client.publish(f"neargate/commande/{portail['esp32_mac']}", _json.dumps({"action": "ouvrir"}))
     logger.info("Ouverture manuelle du portail %s par %s", portail_id, current_user["email"])
     conn = get_connection()
     conn.execute(
@@ -695,7 +705,7 @@ def supervision(current_user=Depends(get_current_user)):
     # Statut ESP32
     maintenant = datetime.now()
     esp32_list = []
-    for portail_id, info in esp32_status.items():
+    for mac, info in esp32_status.items():
         vu_le_str = info.get("vu_le")
         en_ligne = False
         if vu_le_str:
@@ -705,8 +715,9 @@ def supervision(current_user=Depends(get_current_user)):
             except Exception:
                 pass
         esp32_list.append({
-            "portail_id": portail_id,
-            "label":      info.get("label", portail_id),
+            "mac":        mac,
+            "portail_id": info.get("portail_id"),
+            "label":      info.get("label", "Non assigné"),
             "en_ligne":   en_ligne,
             "vu_le":      vu_le_str,
             "ip":         info.get("ip"),

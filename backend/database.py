@@ -116,6 +116,11 @@ def init_db():
         except Exception:
             pass  # Colonne déjà présente
 
+    try:
+        cursor.execute("ALTER TABLE portails ADD COLUMN esp32_mac TEXT DEFAULT NULL")
+    except Exception:
+        pass  # Colonne déjà présente
+
     # Portails par défaut (premier démarrage uniquement)
     cursor.executemany("""
         INSERT OR IGNORE INTO portails (portail_id, nom, type, description) VALUES (?, ?, ?, ?)

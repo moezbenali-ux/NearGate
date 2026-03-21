@@ -3,15 +3,20 @@
  *
  * Fonctionnement :
  *  1. Scan BLE en continu
- *  2. Filtre les balises iBeacon par UUID cible
+ *  2. Filtre les balises iBeacon (optionnel par UUID)
  *  3. Applique un filtre Kalman sur le RSSI
  *  4. Si RSSI filtré >= seuil ET N confirmations consécutives → commande relais
  *  5. Publie l'événement en MQTT vers le backend Raspberry Pi
  *  6. Écoute les commandes MQTT du backend (ouverture forcée possible)
  *
+ * Identification : l'ESP32 utilise son adresse MAC comme identifiant unique.
+ * L'association MAC ↔ portail se configure dans le dashboard NearGate.
+ * Aucune modification du firmware n'est nécessaire lors du déploiement.
+ *
  * Topics MQTT :
- *   Envoi    → neargate/detection        (JSON : uuid, rssi, portail_id)
- *   Réception← neargate/commande/entree  (JSON : action "ouvrir")
+ *   Envoi    → neargate/detection          (JSON : uuid, major, minor, rssi, esp32_id)
+ *   Envoi    → neargate/ping/{mac}         (JSON : esp32_id, ip)
+ *   Réception← neargate/commande/{mac}     (JSON : action "ouvrir")
  */
 
 #include <Arduino.h>
@@ -30,19 +35,14 @@ const char* WIFI_SSID     = "NearGate";
 const char* WIFI_PASSWORD = "NearGate2026!";
 
 // MQTT — IP fixe du Raspberry Pi sur son propre hotspot
-const char* MQTT_SERVER   = "192.168.42.1";
-const int   MQTT_PORT     = 1883;
-// Client ID unique — doit correspondre au PORTAIL_ID de cet ESP32
-// ESP32 extérieur : "neargate-esp32-entree-ext"
-// ESP32 intérieur : "neargate-esp32-entree-int"
-const char* MQTT_CLIENT_ID = "neargate-esp32-entree-int";
-const char* MQTT_USER     = "neargate";
-const char* MQTT_PASS     = "NearGate-MQTT-2026!";
+const char* MQTT_SERVER = "192.168.42.1";
+const int   MQTT_PORT   = 1883;
+const char* MQTT_USER   = "neargate";
+const char* MQTT_PASS   = "NearGate-MQTT-2026!";
 
-// Identifiant de cet ESP32 :
-//   ESP32 côté EXTÉRIEUR → "entree_ext"
-//   ESP32 côté INTÉRIEUR → "entree_int"
-const char* PORTAIL_ID = "entree_int";  // ← changer selon l'ESP32
+// Identifiant calculé automatiquement depuis l'adresse MAC WiFi (plus de config manuelle)
+char esp32_mac[13];       // ex: "a4cf12abcdef"
+char mqtt_client_id[30];  // ex: "neargate-a4cf12abcdef"
 
 // Filtre UUID optionnel — laisser vide "" pour accepter tous les iBeacons
 // Exemple : "9730c8c0-24fe-327a-3f63-623c87e24797" pour un groupe précis
@@ -156,8 +156,8 @@ void actionner_relais() {
 void publier_heartbeat() {
   if (!mqttClient.connected()) return;
   StaticJsonDocument<96> doc;
-  doc["portail_id"] = PORTAIL_ID;
-  doc["ip"]         = WiFi.localIP().toString();
+  doc["esp32_id"] = esp32_mac;
+  doc["ip"]       = WiFi.localIP().toString();
   char payload[96];
   serializeJson(doc, payload);
   mqttClient.publish(TOPIC_PING, payload);
@@ -168,11 +168,11 @@ void publier_detection(const String& uuid, int major, int minor, int rssi, int b
   if (!mqttClient.connected()) return;
 
   StaticJsonDocument<200> doc;
-  doc["uuid"]       = uuid;
-  doc["major"]      = major;
-  doc["minor"]      = minor;
-  doc["rssi"]       = rssi;
-  doc["portail_id"] = PORTAIL_ID;
+  doc["uuid"]     = uuid;
+  doc["major"]    = major;
+  doc["minor"]    = minor;
+  doc["rssi"]     = rssi;
+  doc["esp32_id"] = esp32_mac;
   if (batterie >= 0) doc["batterie"] = batterie;
 
   char payload[200];
@@ -200,7 +200,7 @@ void callback_mqtt(char* topic, byte* payload, unsigned int length) {
 void connecter_mqtt() {
   while (!mqttClient.connected()) {
     Serial.print("[MQTT] Connexion au broker... ");
-    if (mqttClient.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASS)) {
+    if (mqttClient.connect(mqtt_client_id, MQTT_USER, MQTT_PASS)) {
       Serial.println("Connecté.");
       mqttClient.subscribe(TOPIC_COMMANDE);
       Serial.printf("[MQTT] Abonné à : %s\n", TOPIC_COMMANDE);
@@ -296,11 +296,6 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n=== NearGate — Démarrage ===");
 
-  // Topics MQTT
-  snprintf(TOPIC_DETECTION, sizeof(TOPIC_DETECTION), "neargate/detection");
-  snprintf(TOPIC_COMMANDE,  sizeof(TOPIC_COMMANDE),  "neargate/commande/%s", PORTAIL_ID);
-  snprintf(TOPIC_PING,      sizeof(TOPIC_PING),      "neargate/ping/%s",     PORTAIL_ID);
-
   // Relais
   pinMode(PIN_RELAIS, OUTPUT);
   digitalWrite(PIN_RELAIS, LOW);
@@ -324,8 +319,21 @@ void setup() {
   }
   Serial.printf("\n[WiFi] Connecté. IP : %s\n", WiFi.localIP().toString().c_str());
 
+  // Identifiant unique : adresse MAC WiFi (sans les deux-points, minuscules)
+  String macStr = WiFi.macAddress();
+  macStr.replace(":", "");
+  macStr.toLowerCase();
+  macStr.toCharArray(esp32_mac, sizeof(esp32_mac));
+  snprintf(mqtt_client_id, sizeof(mqtt_client_id), "neargate-%s", esp32_mac);
+  Serial.printf("[ID] ESP32 MAC : %s\n", esp32_mac);
+
+  // Topics MQTT (basés sur la MAC)
+  snprintf(TOPIC_DETECTION, sizeof(TOPIC_DETECTION), "neargate/detection");
+  snprintf(TOPIC_COMMANDE,  sizeof(TOPIC_COMMANDE),  "neargate/commande/%s", esp32_mac);
+  snprintf(TOPIC_PING,      sizeof(TOPIC_PING),      "neargate/ping/%s",     esp32_mac);
+
   // OTA
-  ArduinoOTA.setHostname(MQTT_CLIENT_ID);
+  ArduinoOTA.setHostname(mqtt_client_id);
   ArduinoOTA.setPassword("NearGate-OTA-2026!");
   ArduinoOTA.onStart([]() { Serial.println("[OTA] Mise à jour démarrée..."); });
   ArduinoOTA.onEnd([]()   { Serial.println("\n[OTA] Terminé. Redémarrage..."); });

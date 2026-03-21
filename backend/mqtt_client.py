@@ -214,8 +214,8 @@ def _nettoyage_periodique():
             result = conn.execute("""
                 DELETE FROM badges_etat
                 WHERE etat = 'interieur'
-                  AND (entre_le < ? OR last_seen_at < ?)
-            """, (limite_interieur, limite_non_vu))
+                  AND last_seen_at < ?
+            """, (limite_non_vu,))
             if result.rowcount > 0:
                 logger.info("Nettoyage : %d badge(s) libéré(s) par timeout", result.rowcount)
             conn.commit()

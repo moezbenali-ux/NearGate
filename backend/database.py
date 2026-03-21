@@ -131,8 +131,8 @@ def init_db():
         ("rssi_seuil_entree",       "-70"),   # seuil entrée (ESP32 extérieur)
         ("rssi_seuil_sortie",       "-55"),   # seuil sortie (ESP32 intérieur, zone ~1m)
         ("rssi_oubli",              "-90"),   # en dessous → badge considéré parti
-        ("timeout_interieur_min",   "120"),   # blacklist max 2h
-        ("timeout_non_vu_min",      "10"),    # oublié si non vu depuis 10 min
+        ("timeout_interieur_min",   "120"),   # conservé en config mais non utilisé
+        ("timeout_non_vu_min",      "1"),     # libéré sous ~1-2 min si badge non vu
     ])
 
     conn.commit()

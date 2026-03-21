@@ -564,9 +564,11 @@ async def radar_scan(duree: int = 5, current_user=Depends(get_current_user)):
             badge_key_scan = f"{uuid_ibeacon}:{minor_ibeacon}" if (uuid_ibeacon and minor_ibeacon is not None) else uuid_ibeacon
             conn = get_connection()
             badge = conn.execute(
-                "SELECT nom, actif FROM badges WHERE uuid = ?", (badge_key_scan,)
+                "SELECT nom, actif, batterie_pct FROM badges WHERE uuid = ?", (badge_key_scan,)
             ).fetchone() if badge_key_scan else None
             conn.close()
+
+            batterie_finale = batterie if batterie is not None else (badge["batterie_pct"] if badge else None)
 
             resultats.append({
                 "adresse":      adresse,
@@ -575,7 +577,7 @@ async def radar_scan(duree: int = 5, current_user=Depends(get_current_user)):
                 "uuid_ibeacon": uuid_ibeacon,
                 "major":        major_ibeacon,
                 "minor":        minor_ibeacon,
-                "batterie":     batterie,
+                "batterie":     batterie_finale,
                 "enregistre":   badge is not None,
                 "nom_badge":    badge["nom"] if badge else None,
                 "actif":        bool(badge["actif"]) if badge else None,

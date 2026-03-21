@@ -48,7 +48,7 @@ export default function Portails() {
 
   function commencerEdit(p) {
     setEditId(p.portail_id)
-    setEditForm({ nom: p.nom, type: p.type, description: p.description || '', actif: Boolean(p.actif) })
+    setEditForm({ nom: p.nom, type: p.type, description: p.description || '', actif: Boolean(p.actif), esp32_mac: p.esp32_mac || '' })
   }
 
   async function sauvegarderEdit(portailId) {
@@ -180,6 +180,7 @@ export default function Portails() {
                     <th>Nom</th>
                     <th>Type</th>
                     <th>Description</th>
+                    <th>NearGate Radar (MAC)</th>
                     <th>Statut</th>
                     {isAdmin() && <th>Actions</th>}
                   </tr>
@@ -219,6 +220,15 @@ export default function Portails() {
                             />
                           </td>
                           <td>
+                            <input
+                              value={editForm.esp32_mac}
+                              onChange={e => setEditForm(f => ({ ...f, esp32_mac: e.target.value.toLowerCase().replace(/[^0-9a-f]/g, '') }))}
+                              style={{ width: '100%', fontSize: 13, fontFamily: 'monospace' }}
+                              placeholder="ex : a4cf12abcdef"
+                              maxLength={12}
+                            />
+                          </td>
+                          <td>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
                               <input
                                 type="checkbox"
@@ -248,6 +258,9 @@ export default function Portails() {
                             </span>
                           </td>
                           <td className="text-muted text-sm">{p.description || '—'}</td>
+                          <td style={{ fontFamily: 'monospace', fontSize: 12, color: p.esp32_mac ? 'var(--electric)' : 'var(--slate)' }}>
+                            {p.esp32_mac || <span className="text-muted">Non assigné</span>}
+                          </td>
                           <td>
                             {isAdmin() ? (
                               <button
@@ -289,7 +302,7 @@ export default function Portails() {
       <div className="box" style={{ marginTop: 24 }}>
         <div className="box-header"><h2>Comment ça marche</h2></div>
         <div className="box-body text-muted text-sm" style={{ lineHeight: 1.8 }}>
-          <p>Chaque <strong>NearGate Radar</strong> (ESP32) doit être configuré avec l'identifiant du portail qu'il surveille.</p>
+          <p>Chaque <strong>NearGate Radar</strong> (ESP32) s'identifie automatiquement par son adresse MAC. Il suffit de coller cette MAC dans le champ <strong>NearGate Radar</strong> du portail correspondant — aucune modification du firmware n'est nécessaire.</p>
           <p>
             <strong style={{ color: 'var(--text)' }}>Machine d'états :</strong> quand un badge est détecté
             par n'importe quel portail actif, le backend décide automatiquement s'il s'agit d'une
@@ -303,9 +316,7 @@ export default function Portails() {
             <a href="/configuration" style={{ color: 'var(--electric)', marginLeft: 4 }}>Configuration</a>.
           </p>
           <p>
-            <strong style={{ color: 'var(--text)' }}>Firmware :</strong> utilisez le
-            <a href="/firmware" style={{ color: 'var(--electric)', marginLeft: 4 }}>Générateur de firmware</a>
-            {' '}pour générer le code de chaque ESP32 avec l'identifiant de portail correspondant.
+            <strong style={{ color: 'var(--text)' }}>Trouver la MAC :</strong> la MAC de l'ESP32 s'affiche dans les logs au démarrage (<code style={{ color: 'var(--electric)' }}>[ID] ESP32 MAC : a4cf12abcdef</code>) ou sur la page <a href="/supervision" style={{ color: 'var(--electric)' }}>Supervision</a> dès qu'il est connecté.
           </p>
         </div>
       </div>

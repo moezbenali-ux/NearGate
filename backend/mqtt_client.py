@@ -42,6 +42,9 @@ TOPIC_PING      = "neargate/ping/+"
 # Suivi connectivité ESP32 (en mémoire — peuplé dynamiquement depuis la DB et les heartbeats)
 esp32_status: dict = {}
 
+# Déduplication BLE — uuid → datetime de la dernière action déclenchée
+_dedup_cache: dict = {}
+
 
 # ─── Helpers config / DB ───────────────────────────────────────────────────
 
@@ -131,6 +134,20 @@ def _enregistrer_evenement(uuid, rssi, action, portail_id, direction):
     sse.diffuser("evenement")
 
 
+# ─── Déduplication BLE ─────────────────────────────────────────────────────
+
+def _est_doublon(uuid: str) -> bool:
+    """Retourne True si ce badge a déjà déclenché une action dans la fenêtre de dédup."""
+    delai = int(_get_config("dedup_delai_sec") or 5)
+    derniere = _dedup_cache.get(uuid)
+    return bool(derniere and (datetime.now() - derniere).total_seconds() < delai)
+
+
+def _marquer_action(uuid: str):
+    """Enregistre le timestamp de la dernière action déclenchée pour ce badge."""
+    _dedup_cache[uuid] = datetime.now()
+
+
 # ─── Machine d'états ───────────────────────────────────────────────────────
 
 def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id):
@@ -162,11 +179,15 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id):
         # Un portail d'entrée ne déclenche que des entrées (badge LIBRE)
         if etat == "libre":
             if rssi >= seuil_entree:
+                if _est_doublon(uuid):
+                    logger.debug("Badge %s — doublon BLE supprimé (portail=%s)", uuid, portail_id)
+                    return
                 logger.info("Badge %s — ENTRÉE autorisée via %s (RSSI %d)", uuid, portail_id, rssi)
                 mqtt_client_instance.publish(
                     TOPIC_COMMANDE.format(portail_id=portail_id),
                     json.dumps({"action": "ouvrir"})
                 )
+                _marquer_action(uuid)
                 _set_etat(uuid, "interieur", rssi)
                 _enregistrer_evenement(uuid, rssi, "ouverture", portail_id, "entree")
             else:
@@ -180,11 +201,15 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id):
         # Un portail de sortie déclenche une sortie dès que le RSSI est suffisant,
         # quel que soit l'état du badge (évite les fausses entrées avec un seul radar)
         if rssi >= seuil_sortie:
+            if _est_doublon(uuid):
+                logger.debug("Badge %s — doublon BLE supprimé (portail=%s)", uuid, portail_id)
+                return
             logger.info("Badge %s — SORTIE autorisée via %s (RSSI %d)", uuid, portail_id, rssi)
             mqtt_client_instance.publish(
                 TOPIC_COMMANDE.format(portail_id=portail_id),
                 json.dumps({"action": "ouvrir"})
             )
+            _marquer_action(uuid)
             _set_etat(uuid, "libre", rssi)
             _enregistrer_evenement(uuid, rssi, "ouverture", portail_id, "sortie")
         else:
@@ -209,6 +234,12 @@ def _nettoyage_periodique():
             timeout_non_vu    = int(_get_config("timeout_non_vu_min") or 10)
             limite_interieur  = (datetime.now() - timedelta(minutes=timeout_interieur)).isoformat(sep=" ", timespec="seconds")
             limite_non_vu     = (datetime.now() - timedelta(minutes=timeout_non_vu)).isoformat(sep=" ", timespec="seconds")
+
+            # Nettoyage du cache de déduplication (entrées > 60s)
+            seuil_dedup = datetime.now() - timedelta(seconds=60)
+            expirés = [u for u, t in _dedup_cache.items() if t < seuil_dedup]
+            for u in expirés:
+                del _dedup_cache[u]
 
             conn = get_connection()
             result = conn.execute("""

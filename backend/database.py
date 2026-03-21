@@ -133,6 +133,7 @@ def init_db():
         ("rssi_oubli",              "-90"),   # en dessous → badge considéré parti
         ("timeout_interieur_min",   "120"),   # conservé en config mais non utilisé
         ("timeout_non_vu_min",      "1"),     # libéré sous ~1-2 min si badge non vu
+        ("dedup_delai_sec",         "5"),     # fenêtre anti-doublon BLE (secondes)
     ])
 
     conn.commit()

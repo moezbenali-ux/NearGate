@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, RefreshCw, Power, Trash2, Wifi, WifiOff, Loader, CheckCircle, AlertCircle, Battery, BatteryLow } from 'lucide-react'
+import { Plus, RefreshCw, Power, Trash2, Wifi, WifiOff, Loader, CheckCircle, AlertCircle, Battery, BatteryLow, Pencil, Check, X } from 'lucide-react'
 import { api } from '../api'
 import ImportCSV from '../components/ImportCSV'
 
@@ -33,6 +33,8 @@ export default function Badges() {
   const [ajouts,  setAjouts]  = useState({})
   const [scanErr, setScanErr] = useState(null)
   const [supervision, setSupervision] = useState(null)
+  const [editNomId,   setEditNomId]   = useState(null)
+  const [editNom,     setEditNom]     = useState('')
 
   async function charger() {
     const [b, sup] = await Promise.all([api.badges(), api.supervision()])
@@ -56,6 +58,20 @@ export default function Badges() {
       })
       setForm({ uuid: '', minor: '', nom: '' })
       afficherNotif('Badge ajouté avec succès.')
+      charger()
+    } catch (err) { afficherNotif(err.message, 'err') }
+  }
+
+  function commencerEditNom(b) {
+    setEditNomId(b.uuid)
+    setEditNom(b.nom)
+  }
+
+  async function sauvegarderNom(b) {
+    if (!editNom.trim()) return
+    try {
+      await api.modifierBadge(b.uuid, { nom: editNom.trim() })
+      setEditNomId(null)
       charger()
     } catch (err) { afficherNotif(err.message, 'err') }
   }
@@ -260,7 +276,28 @@ export default function Badges() {
                 <tbody>
                   {badges.map(b => (
                     <tr key={b.uuid}>
-                      <td><strong>{b.nom}</strong></td>
+                      <td>
+                        {editNomId === b.uuid ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                              value={editNom}
+                              onChange={e => setEditNom(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') sauvegarderNom(b); if (e.key === 'Escape') setEditNomId(null) }}
+                              autoFocus
+                              style={{ fontSize: 13, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--electric)', background: 'var(--navy-light)', color: 'var(--text)', width: 160 }}
+                            />
+                            <button className="btn btn-primary btn-sm" onClick={() => sauvegarderNom(b)}><Check size={12} /></button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setEditNomId(null)}><X size={12} /></button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <strong>{b.nom}</strong>
+                            <button onClick={() => commencerEditNom(b)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate)', padding: 2, display: 'flex' }}>
+                              <Pencil size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
                       <td className="text-muted text-sm" style={{ fontFamily: 'monospace', fontSize: 12 }}>{b.uuid}</td>
                       <td><span className={`badge ${b.actif ? 'actif' : 'inactif'}`}>{b.actif ? 'Actif' : 'Inactif'}</span></td>
                       <td className="text-muted text-sm">{b.cree_le?.slice(0, 10)}</td>

@@ -122,6 +122,9 @@ def init_db():
     except Exception:
         pass  # Colonne déjà présente
 
+    # Backfill modele = nom pour les badges existants sans modèle
+    cursor.execute("UPDATE badges SET modele = nom WHERE modele IS NULL")
+
     # Valeurs par défaut de configuration
     cursor.executemany("""
         INSERT OR IGNORE INTO config (cle, valeur) VALUES (?, ?)

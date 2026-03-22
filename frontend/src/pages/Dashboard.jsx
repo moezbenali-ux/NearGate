@@ -229,7 +229,7 @@ export default function Dashboard() {
             : (
               <table>
                 <thead>
-                  <tr><th>Date</th><th>Utilisateur</th><th>Direction</th><th>RSSI</th><th>Portail</th></tr>
+                  <tr><th>Date</th><th>Utilisateur</th><th>Direction</th><th>RSSI</th><th>NG Radar</th></tr>
                 </thead>
                 <tbody>
                   {evenementsFiltres.map(e => (

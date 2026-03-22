@@ -134,10 +134,11 @@ def _update_last_seen(uuid, rssi):
 
 
 def _enregistrer_evenement(uuid, rssi, action, portail_id, direction):
+    now = datetime.now().isoformat(sep=" ", timespec="seconds")
     conn = get_connection()
     conn.execute(
-        "INSERT INTO evenements (badge_uuid, rssi, action, direction, portail_id) VALUES (?, ?, ?, ?, ?)",
-        (uuid, rssi, action, direction, portail_id),
+        "INSERT INTO evenements (badge_uuid, rssi, action, direction, portail_id, horodatage) VALUES (?, ?, ?, ?, ?, ?)",
+        (uuid, rssi, action, direction, portail_id, now),
     )
     conn.commit()
     conn.close()

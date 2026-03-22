@@ -245,6 +245,7 @@ export default function Portails() {
                 <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
                   <option value="entree">Entrée</option>
                   <option value="sortie">Sortie</option>
+                  <option value="entree_sortie">Entrée / Sortie</option>
                 </select>
               </div>
               <div className="field">
@@ -304,16 +305,33 @@ export default function Portails() {
                             <select value={editForm.type} onChange={e => setEditForm(f => ({ ...f, type: e.target.value }))} style={{ fontSize: 13 }}>
                               <option value="entree">Entrée</option>
                               <option value="sortie">Sortie</option>
+                              <option value="entree_sortie">Entrée / Sortie</option>
                             </select>
                           </td>
                           <td>
-                            <input
-                              value={editForm.esp32_mac}
-                              onChange={e => setEditForm(f => ({ ...f, esp32_mac: e.target.value.toLowerCase().replace(/[^0-9a-f]/g, '') }))}
-                              style={{ width: '100%', fontSize: 13, fontFamily: 'monospace' }}
-                              placeholder="ex : a4cf12abcdef"
-                              maxLength={12}
-                            />
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              <input
+                                value={editForm.esp32_mac}
+                                onChange={e => setEditForm(f => ({ ...f, esp32_mac: e.target.value.toLowerCase().replace(/[^0-9a-f]/g, '') }))}
+                                style={{ width: '100%', fontSize: 13, fontFamily: 'monospace' }}
+                                placeholder="ex : a4cf12abcdef"
+                                maxLength={12}
+                              />
+                              {radars.filter(r => !r.portail_id).length > 0 && (
+                                <select
+                                  defaultValue=""
+                                  onChange={e => { if (e.target.value) setEditForm(f => ({ ...f, esp32_mac: e.target.value })) }}
+                                  style={{ fontSize: 12, background: 'var(--navy-light)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '3px 6px' }}
+                                >
+                                  <option value="">Assigner un radar…</option>
+                                  {radars.filter(r => !r.portail_id).map(r => (
+                                    <option key={r.mac} value={r.mac}>
+                                      {r.mac}{r.en_ligne ? ' ✓' : ' (hors ligne)'}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
                           </td>
                           <td>—</td>
                           <td>—</td>
@@ -335,9 +353,16 @@ export default function Portails() {
                         <>
                           <td><strong>{p.nom}</strong></td>
                           <td>
-                            <span className={`badge ${p.type === 'entree' ? 'entree' : 'sortie'}`}>
-                              {p.type === 'entree' ? '↘ Entrée' : '↗ Sortie'}
-                            </span>
+                            {p.type === 'entree_sortie' ? (
+                              <span style={{ display: 'inline-flex', gap: 4 }}>
+                                <span className="badge entree">↘ Entrée</span>
+                                <span className="badge sortie">↗ Sortie</span>
+                              </span>
+                            ) : (
+                              <span className={`badge ${p.type === 'entree' ? 'entree' : 'sortie'}`}>
+                                {p.type === 'entree' ? '↘ Entrée' : '↗ Sortie'}
+                              </span>
+                            )}
                           </td>
                           <td style={{ fontFamily: 'monospace', fontSize: 12, color: p.esp32_mac ? 'var(--electric)' : 'var(--slate)' }}>
                             {p.esp32_mac || <span className="text-muted">Non assigné</span>}

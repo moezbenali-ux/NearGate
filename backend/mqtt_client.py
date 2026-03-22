@@ -227,6 +227,29 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id, esp32_mac):
             logger.debug("Badge %s — RSSI insuffisant pour sortie (portail=%s, RSSI=%d)",
                          uuid, portail_id, rssi)
 
+    elif portail_type == "entree_sortie":
+        # Portail bidirectionnel : décide selon l'état du badge
+        seuil = seuil_entree if etat == "libre" else seuil_sortie
+        if rssi >= seuil:
+            if _est_doublon(uuid):
+                logger.debug("Badge %s — doublon BLE supprimé (portail=%s)", uuid, portail_id)
+                return
+            if etat == "libre":
+                logger.info("Badge %s — ENTRÉE autorisée via %s bidirectionnel (RSSI %d)", uuid, portail_id, rssi)
+                mqtt_client_instance.publish(f"neargate/commande/{esp32_mac}", json.dumps({"action": "ouvrir"}))
+                _marquer_action(uuid)
+                _set_etat(uuid, "interieur", rssi)
+                _enregistrer_evenement(uuid, rssi, "ouverture", portail_id, "entree")
+            else:
+                logger.info("Badge %s — SORTIE autorisée via %s bidirectionnel (RSSI %d)", uuid, portail_id, rssi)
+                mqtt_client_instance.publish(f"neargate/commande/{esp32_mac}", json.dumps({"action": "ouvrir"}))
+                _marquer_action(uuid)
+                _set_etat(uuid, "libre", rssi)
+                _enregistrer_evenement(uuid, rssi, "ouverture", portail_id, "sortie")
+        else:
+            _update_last_seen(uuid, rssi)
+            logger.debug("Badge %s — RSSI insuffisant (portail=%s bidirectionnel, RSSI=%d)", uuid, portail_id, rssi)
+
 
 # ─── Nettoyage automatique (thread) ────────────────────────────────────────
 

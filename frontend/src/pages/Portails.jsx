@@ -9,7 +9,7 @@ const VIDE = { portail_id: '', nom: '', type: 'entree', description: '', actif: 
 
 function tempsRelatif(dateStr) {
   if (!dateStr) return null
-  const diff = Math.floor((Date.now() - new Date(dateStr.replace(' ', 'T') + 'Z').getTime()) / 1000)
+  const diff = Math.floor((Date.now() - new Date(dateStr.replace(' ', 'T')).getTime()) / 1000)
   if (diff < 60)    return `il y a ${diff}s`
   if (diff < 3600)  return `il y a ${Math.floor(diff / 60)}min`
   if (diff < 86400) return `il y a ${Math.floor(diff / 3600)}h`
@@ -62,7 +62,7 @@ function CarteRadar({ radar, latestVersion, onOta, otaLoading }) {
           <span style={{ fontFamily: 'monospace', color: 'var(--electric)' }}>{radar.mac}</span>
           {radar.ip && <span>IP : <strong style={{ color: 'var(--text)' }}>{radar.ip}</strong></span>}
           {radar.firmware_version
-            ? <span>Firmware : <strong style={{ color: aJour ? '#00F5A0' : '#FFB347', fontFamily: 'monospace' }}>v{radar.firmware_version}</strong>{aJour ? ' ✓' : ` → v${latestVersion} dispo`}</span>
+            ? <span>Firmware : <strong style={{ color: aJour ? '#00F5A0' : '#FFB347', fontFamily: 'monospace' }}>v{radar.firmware_version}</strong>{aJour ? ' ✓' : latestVersion ? ` → v${latestVersion} dispo` : ''}</span>
             : latestVersion ? <span style={{ color: '#FFB347' }}>Firmware : <strong>inconnu</strong> → v{latestVersion} dispo</span> : null
           }
           {radar.vu_le

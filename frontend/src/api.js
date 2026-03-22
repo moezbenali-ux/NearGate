@@ -92,6 +92,7 @@ export const api = {
   supprimerPortail: (portailId) => req('DELETE', `/portails/${portailId}`),
   configurerCapteur: (portailId, actif) => req('POST', `/portails/${portailId}/capteur`, { actif }),
   firmwareInfo: () => req('GET', '/firmware/info'),
+  firmwareLogs: () => req('GET', '/firmware/logs'),
   radarOta: (mac) => req('POST', `/radar/${mac}/ota`),
 
   // Commande manuelle

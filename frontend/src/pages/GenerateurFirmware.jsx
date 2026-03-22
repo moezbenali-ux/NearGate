@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Download, Copy, Check, Code2, Upload, AlertCircle } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Download, Copy, Check, Code2, Upload, AlertCircle, ClipboardList } from 'lucide-react'
 import { api } from '../api'
 
 const DEFAULTS = {
@@ -369,10 +369,26 @@ export default function GenerateurFirmware() {
   const [uploadStatus,  setUploadStatus]  = useState(null) // null | 'loading' | 'ok' | 'err'
   const [uploadMsg,     setUploadMsg]     = useState('')
   const [firmwareInfo,  setFirmwareInfo]  = useState(null)
+  const [otaLogs,       setOtaLogs]       = useState([])
+  const logsEndRef = useRef(null)
 
   useEffect(() => {
     api.portails().then(liste => setPortails(liste)).catch(() => {})
     api.firmwareInfo().then(setFirmwareInfo).catch(() => {})
+    api.firmwareLogs().then(setOtaLogs).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const es = new EventSource('/api/events')
+    es.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data)
+        if (msg.type === 'ota_log' && msg.data) {
+          setOtaLogs(prev => [msg.data, ...prev].slice(0, 200))
+        }
+      } catch {}
+    }
+    return () => es.close()
   }, [])
 
   function maj(champ, valeur) {
@@ -440,6 +456,51 @@ export default function GenerateurFirmware() {
       <div className="page-header">
         <h1>Générateur de firmware</h1>
         <p>Configurez les paramètres de votre nouvel ESP32 et téléchargez le fichier <code>.ino</code> prêt à flasher</p>
+      </div>
+
+      {/* ── Journal OTA ── */}
+      <div className="box" style={{ marginBottom: 24 }}>
+        <div className="box-header">
+          <h2><ClipboardList size={15} /> Journal de mise à jour OTA</h2>
+          <span style={{ fontSize: 12, color: 'var(--slate)' }}>{otaLogs.length} entrée{otaLogs.length !== 1 ? 's' : ''}</span>
+        </div>
+        {otaLogs.length === 0 ? (
+          <div style={{ padding: '20px 24px', color: 'var(--slate)', fontSize: 13 }}>
+            Aucun événement OTA enregistré. Les événements apparaîtront ici en temps réel.
+          </div>
+        ) : (
+          <div style={{ maxHeight: 280, overflowY: 'auto', fontFamily: 'monospace', fontSize: 12 }}>
+            {otaLogs.map((log, i) => {
+              const couleur = log.niveau === 'succes' ? '#00F5A0'
+                            : log.niveau === 'erreur' ? '#FF6B6B'
+                            : log.niveau === 'warning' ? '#FFB347'
+                            : 'var(--slate)'
+              const bg = log.niveau === 'succes' ? '#00F5A008'
+                       : log.niveau === 'erreur' ? '#FF6B6B08'
+                       : 'transparent'
+              return (
+                <div key={i} style={{
+                  display: 'flex', gap: 12, alignItems: 'baseline',
+                  padding: '7px 20px',
+                  borderBottom: i < otaLogs.length - 1 ? '1px solid var(--border)' : 'none',
+                  background: bg,
+                }}>
+                  <span style={{ color: 'var(--slate)', flexShrink: 0, fontSize: 11 }}>
+                    {log.horodatage}
+                  </span>
+                  <span style={{ color: '#8BA3C0', flexShrink: 0, minWidth: 120 }}>
+                    {log.label !== log.mac ? log.label : ''}
+                  </span>
+                  <span style={{ color: couleur, flexShrink: 0, textTransform: 'uppercase', fontSize: 10, fontWeight: 700, minWidth: 55 }}>
+                    [{log.niveau}]
+                  </span>
+                  <span style={{ color: 'var(--text)' }}>{log.message}</span>
+                </div>
+              )
+            })}
+            <div ref={logsEndRef} />
+          </div>
+        )}
       </div>
 
       {/* ── Déployer le firmware ── */}

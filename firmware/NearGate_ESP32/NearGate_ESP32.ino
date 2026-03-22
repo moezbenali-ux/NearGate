@@ -32,7 +32,7 @@
 
 // ─── Version firmware ───────────────────────────────────────────────────────
 
-#define FIRMWARE_VERSION "2.2.0"
+#define FIRMWARE_VERSION "2.3.0"
 
 // ─── Configuration — À MODIFIER ────────────────────────────────────────────
 
@@ -85,18 +85,21 @@ const unsigned long DELAI_ANTI_REBOND_MS = 10000;
 
 // ─── Paramètres MQTT ────────────────────────────────────────────────────────
 
-const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
+const unsigned long HEARTBEAT_INTERVAL_MS  = 30000;
+const unsigned long DISTANCE_INTERVAL_MS   = 2000;
 
 // ─── Topics MQTT ────────────────────────────────────────────────────────────
 
 char TOPIC_DETECTION[50];
 char TOPIC_COMMANDE[50];
 char TOPIC_PING[50];
+char TOPIC_DISTANCE[55];
 
 // ─── Variables globales ─────────────────────────────────────────────────────
 
 unsigned long dernierHeartbeat   = 0;
 unsigned long derniereMesure     = 0;
+unsigned long derniereDistance   = 0;
 
 // État du relais (non-bloquant)
 bool          relais_ouvert         = false;
@@ -224,6 +227,16 @@ void publier_heartbeat() {
   serializeJson(doc, payload);
   mqttClient.publish(TOPIC_PING, payload);
   Serial.printf("[MQTT] Heartbeat publié sur %s\n", TOPIC_PING);
+}
+
+void publier_distance() {
+  if (!mqttClient.connected() || !capteur_actif) return;
+  float dist = mesurer_distance();
+  StaticJsonDocument<64> doc;
+  doc["distance_cm"] = (int)dist;
+  char payload[64];
+  serializeJson(doc, payload);
+  mqttClient.publish(TOPIC_DISTANCE, payload);
 }
 
 void publier_detection(const String& uuid, int major, int minor, int rssi, int batterie) {
@@ -404,6 +417,7 @@ void setup() {
   snprintf(TOPIC_DETECTION, sizeof(TOPIC_DETECTION), "neargate/detection");
   snprintf(TOPIC_COMMANDE,  sizeof(TOPIC_COMMANDE),  "neargate/commande/%s", esp32_mac);
   snprintf(TOPIC_PING,      sizeof(TOPIC_PING),      "neargate/ping/%s",     esp32_mac);
+  snprintf(TOPIC_DISTANCE,  sizeof(TOPIC_DISTANCE),  "neargate/distance/%s", esp32_mac);
 
   // OTA
   ArduinoOTA.setHostname(mqtt_client_id);
@@ -453,6 +467,12 @@ void loop() {
   if (maintenant - dernierHeartbeat >= HEARTBEAT_INTERVAL_MS) {
     publier_heartbeat();
     dernierHeartbeat = maintenant;
+  }
+
+  // Distance toutes les 2s (si capteur actif)
+  if (capteur_actif && maintenant - derniereDistance >= DISTANCE_INTERVAL_MS) {
+    publier_distance();
+    derniereDistance = maintenant;
   }
 
   // ── Traitement demande d'ouverture (posée par callback MQTT) ──────────────

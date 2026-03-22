@@ -40,6 +40,7 @@ PASSWORD = os.getenv("MQTT_PASSWORD", "")
 TOPIC_DETECTION = "neargate/detection"
 TOPIC_COMMANDE  = "neargate/commande/{portail_id}"
 TOPIC_PING      = "neargate/ping/+"
+TOPIC_DISTANCE  = "neargate/distance/+"
 
 # Suivi connectivité ESP32 (en mémoire — peuplé dynamiquement depuis la DB et les heartbeats)
 esp32_status: dict = {}
@@ -57,6 +58,33 @@ badges_en_attente: dict = {}
 
 # Alertes déjà envoyées — évite le spam (clé → date de dernière alerte)
 _alertes_envoyees: dict = {}  # ex: "offline:B0:CB:D8:8B:87:88" → date
+
+# ─── OTA Audit Log ──────────────────────────────────────────────────────────
+
+_ota_logs: list = []
+_ota_pending: dict = {}  # mac → {"version_cible": str, "declenchee_le": datetime}
+OTA_LOG_MAX = 200
+
+
+def ota_log(mac: str, niveau: str, message: str):
+    """Enregistre un événement OTA et le diffuse via SSE."""
+    label = esp32_status.get(mac, {}).get("label", mac)
+    now = datetime.now().isoformat(sep=" ", timespec="seconds")
+    entry = {"horodatage": now, "mac": mac, "label": label, "niveau": niveau, "message": message}
+    _ota_logs.append(entry)
+    if len(_ota_logs) > OTA_LOG_MAX:
+        _ota_logs.pop(0)
+    sse.diffuser("ota_log", entry)
+
+
+def ota_marquer_pending(mac: str, version_cible: str):
+    """Marque un radar comme ayant une mise à jour OTA en cours."""
+    _ota_pending[mac] = {"version_cible": version_cible, "declenchee_le": datetime.now()}
+
+
+def get_ota_logs() -> list:
+    """Retourne les logs OTA du plus récent au plus ancien."""
+    return list(reversed(_ota_logs))
 
 
 # ─── Email alertes ──────────────────────────────────────────────────────────
@@ -440,6 +468,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
         logger.info("MQTT connecté au broker %s:%s", BROKER, PORT)
         client.subscribe(TOPIC_DETECTION)
         client.subscribe(TOPIC_PING)
+        client.subscribe(TOPIC_DISTANCE)
         logger.info("Abonné au topic : %s", TOPIC_DETECTION)
     else:
         logger.error("Échec connexion MQTT, code : %s", reason_code)
@@ -448,6 +477,14 @@ def on_connect(client, userdata, flags, reason_code, properties):
 def on_message(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode())
+
+        if msg.topic.startswith("neargate/distance/"):
+            mac = msg.topic.split("/")[-1]
+            distance_cm = payload.get("distance_cm")
+            if mac in esp32_status and distance_cm is not None:
+                esp32_status[mac]["distance_cm"] = distance_cm
+                sse.diffuser("distance", {"mac": mac, "distance_cm": distance_cm})
+            return
 
         if msg.topic.startswith("neargate/ping/"):
             mac = msg.topic.split("/")[-1]
@@ -458,12 +495,30 @@ def on_message(client, userdata, msg):
                     "label":      portail["nom"] if portail else "Non assigné",
                     "portail_id": portail["portail_id"] if portail else None,
                 }
+            # Capturer l'ancienne version avant mise à jour (pour détection OTA)
+            ancien_version = esp32_status[mac].get("firmware_version")
+            new_version    = payload.get("firmware_version")
+
             esp32_status[mac]["vu_le"]            = now
             esp32_status[mac]["ip"]               = payload.get("ip")
-            esp32_status[mac]["firmware_version"]  = payload.get("firmware_version")
+            esp32_status[mac]["firmware_version"]  = new_version
             esp32_status[mac]["capteur_actif"]     = payload.get("capteur_actif", True)
             esp32_status[mac]["distance_cm"]       = payload.get("distance_cm")
-            logger.debug("Heartbeat reçu de %s (IP: %s, FW: %s)", mac, payload.get("ip"), payload.get("firmware_version"))
+            logger.debug("Heartbeat reçu de %s (IP: %s, FW: %s)", mac, payload.get("ip"), new_version)
+
+            # Vérification résultat OTA
+            if mac in _ota_pending:
+                pending = _ota_pending[mac]
+                elapsed = (datetime.now() - pending["declenchee_le"]).total_seconds()
+                if elapsed >= 10:  # Délai minimum download + reboot
+                    if new_version == pending["version_cible"]:
+                        ota_log(mac, "succes", f"Mise à jour réussie → v{new_version}")
+                    else:
+                        ota_log(mac, "erreur",
+                                f"Échec — radar sur v{new_version or '?'} (attendu v{pending['version_cible']})")
+                    del _ota_pending[mac]
+            elif ancien_version and new_version and ancien_version != new_version:
+                ota_log(mac, "info", f"Version changée : v{ancien_version} → v{new_version} (flash USB ?)")
             return
 
         uuid      = payload.get("uuid", "").strip()

@@ -25,10 +25,11 @@ function StatutPill({ ok, labelOk, labelKo }) {
 }
 
 export default function Connectivite() {
-  const [data,    setData]    = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [erreur,  setErreur]  = useState(null)
-  const [refresh, setRefresh] = useState(null)
+  const [data,      setData]      = useState(null)
+  const [loading,   setLoading]   = useState(true)
+  const [erreur,    setErreur]    = useState(null)
+  const [refresh,   setRefresh]   = useState(null)
+  const [distances, setDistances] = useState({})
 
   const charger = useCallback(async () => {
     setLoading(true); setErreur(null)
@@ -48,6 +49,19 @@ export default function Connectivite() {
     const t = setInterval(charger, 30000)
     return () => clearInterval(t)
   }, [charger])
+
+  useEffect(() => {
+    const es = new EventSource('/api/events')
+    es.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data)
+        if (msg.type === 'distance' && msg.data) {
+          setDistances(prev => ({ ...prev, [msg.data.mac]: msg.data.distance_cm }))
+        }
+      } catch {}
+    }
+    return () => es.close()
+  }, [])
 
   return (
     <div style={{ maxWidth: 960 }}>
@@ -125,14 +139,17 @@ export default function Connectivite() {
                     }
                   </span>
                 </div>
-                {esp.capteur_actif && esp.distance_cm != null && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--slate)' }}>Distance mesurée</span>
-                    <strong style={{ color: esp.distance_cm < 200 ? '#00F5A0' : 'var(--slate)' }}>
-                      {esp.distance_cm >= 999 ? 'Aucun obstacle' : `${esp.distance_cm} cm`}
-                    </strong>
-                  </div>
-                )}
+                {esp.capteur_actif && (() => {
+                  const dist = distances[esp.mac] ?? esp.distance_cm
+                  return dist != null ? (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--slate)' }}>Distance mesurée</span>
+                      <strong style={{ color: dist < 200 ? '#00F5A0' : 'var(--slate)' }}>
+                        {dist >= 999 ? 'Aucun obstacle' : `${dist} cm`}
+                      </strong>
+                    </div>
+                  ) : null
+                })()}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--slate)' }}>Dernier contact</span>
                   <span style={{ color: esp.en_ligne ? 'var(--text)' : '#FF6B6B' }}>

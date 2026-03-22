@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from database import init_db, get_connection
 from auth import verifier_api_key
 from auth_jwt import creer_token, verifier_mdp, get_current_user
-from mqtt_client import demarrer_mqtt, esp32_status, badges_en_attente
+from mqtt_client import demarrer_mqtt, esp32_status, badges_en_attente, ota_log, ota_marquer_pending, get_ota_logs
 from sync_agent import demarrer_sync
 import sse
 
@@ -809,15 +809,25 @@ def firmware_info():
 
 
 @router.get("/firmware/bin")
-def firmware_bin():
+def firmware_bin(request: Request):
     """Sert le binaire firmware pour la mise à jour OTA (accès public — requis par l'ESP32)."""
     if not FIRMWARE_BIN_PATH.exists():
         raise HTTPException(status_code=404, detail="Aucun firmware disponible.")
+    client_ip = request.client.host if request.client else "?"
+    # Identifier le radar par son IP
+    mac = next((m for m, info in esp32_status.items() if info.get("ip") == client_ip), "?")
+    ota_log(mac, "info", f"Firmware .bin téléchargé depuis {client_ip}")
     return FileResponse(
         FIRMWARE_BIN_PATH,
         media_type="application/octet-stream",
         filename="NearGate_ESP32.bin"
     )
+
+
+@router.get("/firmware/logs")
+def firmware_logs(current_user=Depends(get_current_user)):
+    """Retourne le journal des événements OTA."""
+    return get_ota_logs()
 
 
 @router.post("/radar/{mac}/ota")
@@ -826,8 +836,11 @@ def radar_ota(mac: str, current_user=Depends(require_role("admin"))):
     import json as _json
     if not FIRMWARE_BIN_PATH.exists():
         raise HTTPException(status_code=400, detail="Aucun firmware disponible. Uploadez d'abord un .bin.")
+    info = _json.loads(FIRMWARE_INFO_PATH.read_text())
     url = "http://192.168.42.1:8000/api/firmware/bin"
     mqtt_client.publish(f"neargate/commande/{mac}", _json.dumps({"action": "ota_http", "url": url}))
+    ota_marquer_pending(mac, info["version"])
+    ota_log(mac, "info", f"OTA commandé par {current_user['email']} — cible v{info['version']}")
     logger.info("OTA HTTP déclenché sur radar %s par %s", mac, current_user["email"])
     return {"message": f"Commande OTA envoyée au radar {mac}. Mise à jour en cours..."}
 

@@ -11,7 +11,7 @@ const PAGES = {
   '/configuration':  'Configuration',
   '/portails':       'NearGate Radars',
   '/firmware':       'Générateur firmware',
-  '/supervision':    'Supervision',
+  '/supervision':    'Connectivité',
 }
 
 const user = () => JSON.parse(localStorage.getItem('ng_user') || '{}')
@@ -60,7 +60,7 @@ export default function Layout() {
             <Cpu size={17} /> Firmware ESP32
           </NavLink>
           <NavLink to="/supervision" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            <Activity size={17} /> Supervision
+            <Activity size={17} /> Connectivité
           </NavLink>
         </nav>
         <div className="sidebar-footer">

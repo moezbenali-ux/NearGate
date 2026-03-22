@@ -87,6 +87,7 @@ export const api = {
   creerPortail: (data) => req('POST', '/portails', data),
   modifierPortail: (portailId, data) => req('PATCH', `/portails/${portailId}`, data),
   supprimerPortail: (portailId) => req('DELETE', `/portails/${portailId}`),
+  configurerCapteur: (portailId, actif) => req('POST', `/portails/${portailId}/capteur`, { actif }),
 
   // Commande manuelle
   ouvrirPortail: (portailId) => req('POST', `/portail/${portailId}/ouvrir`),

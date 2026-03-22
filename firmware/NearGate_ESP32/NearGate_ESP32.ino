@@ -5,9 +5,10 @@
  *  1. Scan BLE en continu
  *  2. Filtre les balises iBeacon (optionnel par UUID)
  *  3. Applique un filtre Kalman sur le RSSI
- *  4. Si RSSI filtré >= seuil ET N confirmations consécutives → commande relais
- *  5. Publie l'événement en MQTT vers le backend Raspberry Pi
- *  6. Écoute les commandes MQTT du backend (ouverture forcée possible)
+ *  4. Si RSSI filtré >= seuil ET N confirmations consécutives → publie MQTT
+ *  5. Le backend décide d'ouvrir → envoie commande "ouvrir"
+ *  6. L'ESP32 vérifie la présence physique du véhicule (JSN-SR04T)
+ *  7. Ouvre le relais et le maintient ouvert tant que le véhicule est présent
  *
  * Identification : l'ESP32 utilise son adresse MAC comme identifiant unique.
  * L'association MAC ↔ portail se configure dans le dashboard NearGate.
@@ -15,8 +16,8 @@
  *
  * Topics MQTT :
  *   Envoi    → neargate/detection          (JSON : uuid, major, minor, rssi, esp32_id)
- *   Envoi    → neargate/ping/{mac}         (JSON : esp32_id, ip)
- *   Réception← neargate/commande/{mac}     (JSON : action "ouvrir")
+ *   Envoi    → neargate/ping/{mac}         (JSON : esp32_id, ip, capteur_actif)
+ *   Réception← neargate/commande/{mac}     (JSON : action "ouvrir" | "config_capteur")
  */
 
 #include <Arduino.h>
@@ -45,67 +46,90 @@ char esp32_mac[13];       // ex: "a4cf12abcdef"
 char mqtt_client_id[30];  // ex: "neargate-a4cf12abcdef"
 
 // Filtre UUID optionnel — laisser vide "" pour accepter tous les iBeacons
-// Exemple : "9730c8c0-24fe-327a-3f63-623c87e24797" pour un groupe précis
 const char* BEACON_UUID_FILTRE = "";
 
-// Seuil minimum pour publier vers le backend (permissif — c'est le backend qui décide)
-// Ne pas dépasser -90 pour ne pas rater de détections
+// Seuil RSSI minimum pour publier vers le backend
 const int RSSI_SEUIL = -90;
 
-// Nombre de détections consécutives avant ouverture
+// Nombre de détections consécutives avant publication MQTT
 const int CONFIRMATIONS_REQUISES = 3;
 
-// Broche du relais (GPIO)
+// ─── Broches ────────────────────────────────────────────────────────────────
+
 const int PIN_RELAIS = 26;
+const int PIN_TRIG   = 27;   // JSN-SR04T TRIG
+const int PIN_ECHO   = 14;   // JSN-SR04T ECHO
 
-// Durée d'activation du relais en ms (temps d'ouverture du portail)
-const int DUREE_RELAIS_MS = 2000;
+// ─── Paramètres capteur ultrason ────────────────────────────────────────────
 
-// Durée entre deux ouvertures du même badge (anti-rebond, en ms)
+// Distance maximale pour considérer un véhicule présent (cm)
+const float DISTANCE_SEUIL_CM = 200.0;
+
+// Durée minimale d'ouverture du relais (ms) — même si véhicule passe vite
+const unsigned long MAINTIEN_MIN_MS = 2000;
+
+// Durée maximale de sécurité (ms) — fermeture forcée si véhicule bloquant ou capteur KO
+const unsigned long MAINTIEN_MAX_MS = 30000;
+
+// Intervalle entre deux mesures de distance pendant le maintien (ms)
+const unsigned long INTERVALLE_MESURE_MS = 300;
+
+// ─── Paramètres BLE / anti-rebond ───────────────────────────────────────────
+
 const unsigned long DELAI_ANTI_REBOND_MS = 10000;
 
-// Intervalle heartbeat (ms)
+// ─── Paramètres MQTT ────────────────────────────────────────────────────────
+
 const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
 
-// ─── Topics MQTT ───────────────────────────────────────────────────────────
+// ─── Topics MQTT ────────────────────────────────────────────────────────────
 
 char TOPIC_DETECTION[50];
 char TOPIC_COMMANDE[50];
 char TOPIC_PING[50];
 
-// ─── Variables globales ────────────────────────────────────────────────────
+// ─── Variables globales ─────────────────────────────────────────────────────
 
-unsigned long dernierHeartbeat = 0;
+unsigned long dernierHeartbeat   = 0;
+unsigned long derniereMesure     = 0;
+
+// État du relais (non-bloquant)
+bool          relais_ouvert         = false;
+unsigned long relais_ouvert_depuis  = 0;
+
+// Demande d'ouverture posée par le callback MQTT, traitée dans loop()
+volatile bool demande_ouverture = false;
+
+// Capteur ultrason actif ou bypasser (modifiable via MQTT)
+bool capteur_actif = true;
 
 WiFiClient   wifiClient;
 PubSubClient mqttClient(wifiClient);
 BLEScan*     bleScan;
 
-// Filtre Kalman (par UUID de badge pour gérer plusieurs badges)
+// ─── Filtre Kalman ──────────────────────────────────────────────────────────
+
 struct KalmanState {
   float estimation;
   float erreur;
   bool  initialise;
 };
 
-// Simple dictionnaire UUID → état Kalman (max 10 badges simultanés)
 struct EntreeKalman {
-  String uuid;
+  String     uuid;
   KalmanState kalman;
-  int    compteur_confirmations;
+  int          compteur_confirmations;
   unsigned long dernier_declenchement_ms;
-  bool   jamais_declenche;
+  bool         jamais_declenche;
 };
 
 const int MAX_BADGES_SIMULTANES = 10;
 EntreeKalman etatsKalman[MAX_BADGES_SIMULTANES];
 int nbEtats = 0;
 
-// ─── Filtre Kalman ─────────────────────────────────────────────────────────
-
 float kalman_filtrer(KalmanState& etat, float mesure) {
-  const float Q = 0.5;  // bruit de processus
-  const float R = 3.0;  // bruit de mesure
+  const float Q = 0.5;
+  const float R = 3.0;
 
   if (!etat.initialise) {
     etat.estimation = mesure;
@@ -114,51 +138,75 @@ float kalman_filtrer(KalmanState& etat, float mesure) {
     return mesure;
   }
 
-  // Prédiction
   float erreur_pred = etat.erreur + Q;
-
-  // Gain de Kalman
-  float gain = erreur_pred / (erreur_pred + R);
-
-  // Mise à jour
-  etat.estimation = etat.estimation + gain * (mesure - etat.estimation);
-  etat.erreur     = (1 - gain) * erreur_pred;
-
+  float gain        = erreur_pred / (erreur_pred + R);
+  etat.estimation   = etat.estimation + gain * (mesure - etat.estimation);
+  etat.erreur       = (1 - gain) * erreur_pred;
   return etat.estimation;
 }
-
-// ─── Gestion des états par badge ───────────────────────────────────────────
 
 EntreeKalman* obtenir_etat(const String& uuid) {
   for (int i = 0; i < nbEtats; i++) {
     if (etatsKalman[i].uuid == uuid) return &etatsKalman[i];
   }
   if (nbEtats < MAX_BADGES_SIMULTANES) {
-    // dernier_declenchement_ms = ULONG_MAX pour que le premier déclenchement soit toujours autorisé
     etatsKalman[nbEtats] = {uuid, {0, 1, false}, 0, 0, true};
     return &etatsKalman[nbEtats++];
   }
   return nullptr;
 }
 
-// ─── Relais ────────────────────────────────────────────────────────────────
+// ─── Capteur ultrason JSN-SR04T ─────────────────────────────────────────────
 
-void actionner_relais() {
-  Serial.println("[RELAIS] Ouverture du portail !");
-  digitalWrite(PIN_RELAIS, HIGH);
-  delay(DUREE_RELAIS_MS);
-  digitalWrite(PIN_RELAIS, LOW);
-  Serial.println("[RELAIS] Portail refermé.");
+// Retourne la distance en cm. Retourne 999.0 si pas d'écho (rien devant).
+float mesurer_distance() {
+  digitalWrite(PIN_TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(PIN_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(PIN_TRIG, LOW);
+
+  // Timeout 30ms → distance max ~5m (largement suffisant)
+  long duree = pulseIn(PIN_ECHO, HIGH, 30000UL);
+  if (duree == 0) return 999.0;
+  return duree * 0.034f / 2.0f;
 }
 
-// ─── MQTT ──────────────────────────────────────────────────────────────────
+// Retourne true si un véhicule est présent (ou si capteur bypassed)
+bool vehicule_present() {
+  if (!capteur_actif) return true;
+  float dist = mesurer_distance();
+  Serial.printf("[ULTRA] Distance : %.1f cm (seuil : %.0f cm)\n", dist, DISTANCE_SEUIL_CM);
+  return dist < DISTANCE_SEUIL_CM;
+}
+
+// ─── Relais (non-bloquant) ──────────────────────────────────────────────────
+
+void ouvrir_portail() {
+  if (relais_ouvert) return;
+  Serial.println("[RELAIS] Ouverture du portail !");
+  digitalWrite(PIN_RELAIS, HIGH);
+  relais_ouvert        = true;
+  relais_ouvert_depuis = millis();
+}
+
+void fermer_portail() {
+  if (!relais_ouvert) return;
+  digitalWrite(PIN_RELAIS, LOW);
+  relais_ouvert = false;
+  Serial.printf("[RELAIS] Portail refermé (ouvert pendant %lus).\n",
+                (millis() - relais_ouvert_depuis) / 1000);
+}
+
+// ─── MQTT ───────────────────────────────────────────────────────────────────
 
 void publier_heartbeat() {
   if (!mqttClient.connected()) return;
-  StaticJsonDocument<96> doc;
-  doc["esp32_id"] = esp32_mac;
-  doc["ip"]       = WiFi.localIP().toString();
-  char payload[96];
+  StaticJsonDocument<128> doc;
+  doc["esp32_id"]      = esp32_mac;
+  doc["ip"]            = WiFi.localIP().toString();
+  doc["capteur_actif"] = capteur_actif;
+  char payload[128];
   serializeJson(doc, payload);
   mqttClient.publish(TOPIC_PING, payload);
   Serial.printf("[MQTT] Heartbeat publié sur %s\n", TOPIC_PING);
@@ -187,13 +235,19 @@ void callback_mqtt(char* topic, byte* payload, unsigned int length) {
 
   Serial.printf("[MQTT] Message reçu sur %s : %s\n", topic, message.c_str());
 
-  StaticJsonDocument<64> doc;
-  if (deserializeJson(doc, message) == DeserializationError::Ok) {
-    const char* action = doc["action"];
-    if (action && strcmp(action, "ouvrir") == 0) {
-      Serial.println("[MQTT] Commande d'ouverture reçue.");
-      actionner_relais();
-    }
+  StaticJsonDocument<128> doc;
+  if (deserializeJson(doc, message) != DeserializationError::Ok) return;
+
+  const char* action = doc["action"];
+  if (!action) return;
+
+  if (strcmp(action, "ouvrir") == 0) {
+    // Demande posée — traitée dans loop() pour éviter pulseIn dans un callback
+    demande_ouverture = true;
+  }
+  else if (strcmp(action, "config_capteur") == 0) {
+    capteur_actif = doc["actif"] | true;
+    Serial.printf("[CONFIG] Capteur ultrason : %s\n", capteur_actif ? "actif" : "bypassé");
   }
 }
 
@@ -211,38 +265,34 @@ void connecter_mqtt() {
   }
 }
 
-// ─── BLE — Callback de détection ───────────────────────────────────────────
+// ─── BLE — Callback de détection ────────────────────────────────────────────
 
 class CallbackBLE : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice device) {
 
-    // Ignore les appareils sans données iBeacon
     if (!device.haveManufacturerData()) return;
 
     String dataStr = device.getManufacturerData();
-    // Format iBeacon : 2 octets Apple ID (0x004C) + 0x02 + 0x15 + 16 octets UUID + ...
     if (dataStr.length() < 25) return;
     if ((uint8_t)dataStr[0] != 0x4C || (uint8_t)dataStr[1] != 0x00) return;
     if ((uint8_t)dataStr[2] != 0x02 || (uint8_t)dataStr[3] != 0x15) return;
 
-    // Extraction de l'UUID (octets 4 à 19)
+    // UUID (octets 4-19)
     char uuid_buf[37];
     const uint8_t* u = (const uint8_t*)dataStr.c_str() + 4;
     snprintf(uuid_buf, sizeof(uuid_buf),
       "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
       u[0],u[1],u[2],u[3], u[4],u[5], u[6],u[7],
       u[8],u[9], u[10],u[11],u[12],u[13],u[14],u[15]);
-
     String uuid = String(uuid_buf);
 
-    // Filtre UUID optionnel (si BEACON_UUID_FILTRE est non vide)
     if (strlen(BEACON_UUID_FILTRE) > 0 && !uuid.equalsIgnoreCase(BEACON_UUID_FILTRE)) return;
 
-    // Extraction Major et Minor (octets 20-21 et 22-23)
+    // Major et Minor (octets 20-23)
     int major = ((uint8_t)dataStr[20] << 8) | (uint8_t)dataStr[21];
     int minor = ((uint8_t)dataStr[22] << 8) | (uint8_t)dataStr[23];
 
-    // Lecture batterie Feasycom (service data UUID fff0, dernier octet)
+    // Batterie Feasycom (service data UUID FFF0, dernier octet)
     int batterie = -1;
     if (device.haveServiceData()) {
       String svcData = device.getServiceData();
@@ -251,7 +301,6 @@ class CallbackBLE : public BLEAdvertisedDeviceCallbacks {
       }
     }
 
-    // Clé unique par badge : "uuid:minor"
     String badge_key = uuid + ":" + String(minor);
 
     int rssi_brut = device.getRSSI();
@@ -260,14 +309,12 @@ class CallbackBLE : public BLEAdvertisedDeviceCallbacks {
 
     float rssi_filtre = kalman_filtrer(etat->kalman, (float)rssi_brut);
 
-    Serial.printf("[BLE] UUID: %s | Major: %d | Minor: %d | RSSI brut: %d dBm | RSSI filtré: %.1f dBm | Batterie: %d%%\n",
-                  uuid.c_str(), major, minor, rssi_brut, rssi_filtre, batterie);
+    Serial.printf("[BLE] %s | Major: %d | Minor: %d | RSSI brut: %d | filtré: %.1f | Batterie: %d%%\n",
+                  badge_key.c_str(), major, minor, rssi_brut, (int)rssi_filtre, batterie);
 
-    // Seuil RSSI atteint ?
     if ((int)rssi_filtre >= RSSI_SEUIL) {
       etat->compteur_confirmations++;
-      Serial.printf("[BLE] Confirmation %d/%d (badge %s)\n",
-                    etat->compteur_confirmations, CONFIRMATIONS_REQUISES, badge_key.c_str());
+      Serial.printf("[BLE] Confirmation %d/%d\n", etat->compteur_confirmations, CONFIRMATIONS_REQUISES);
 
       if (etat->compteur_confirmations >= CONFIRMATIONS_REQUISES) {
         unsigned long maintenant = millis();
@@ -275,22 +322,19 @@ class CallbackBLE : public BLEAdvertisedDeviceCallbacks {
           etat->dernier_declenchement_ms = maintenant;
           etat->jamais_declenche         = false;
           etat->compteur_confirmations   = 0;
-
-          // Publication MQTT → le backend décide d'ouvrir ou non
           publier_detection(uuid, major, minor, (int)rssi_filtre, batterie);
         } else {
-          Serial.println("[BLE] Anti-rebond actif, ouverture ignorée.");
+          Serial.println("[BLE] Anti-rebond actif, ignoré.");
           etat->compteur_confirmations = 0;
         }
       }
     } else {
-      // RSSI trop faible : on remet le compteur à zéro
       etat->compteur_confirmations = 0;
     }
   }
 };
 
-// ─── Setup ─────────────────────────────────────────────────────────────────
+// ─── Setup ──────────────────────────────────────────────────────────────────
 
 void setup() {
   Serial.begin(115200);
@@ -299,6 +343,13 @@ void setup() {
   // Relais
   pinMode(PIN_RELAIS, OUTPUT);
   digitalWrite(PIN_RELAIS, LOW);
+
+  // Capteur ultrason
+  pinMode(PIN_TRIG, OUTPUT);
+  pinMode(PIN_ECHO, INPUT);
+  digitalWrite(PIN_TRIG, LOW);
+  Serial.printf("[ULTRA] JSN-SR04T — TRIG: GPIO%d, ECHO: GPIO%d, seuil: %.0f cm\n",
+                PIN_TRIG, PIN_ECHO, DISTANCE_SEUIL_CM);
 
   // Wi-Fi
   WiFi.mode(WIFI_STA);
@@ -319,7 +370,7 @@ void setup() {
   }
   Serial.printf("\n[WiFi] Connecté. IP : %s\n", WiFi.localIP().toString().c_str());
 
-  // Identifiant unique : adresse MAC WiFi (sans les deux-points, minuscules)
+  // Identifiant unique : adresse MAC WiFi
   String macStr = WiFi.macAddress();
   macStr.replace(":", "");
   macStr.toLowerCase();
@@ -327,7 +378,7 @@ void setup() {
   snprintf(mqtt_client_id, sizeof(mqtt_client_id), "neargate-%s", esp32_mac);
   Serial.printf("[ID] ESP32 MAC : %s\n", esp32_mac);
 
-  // Topics MQTT (basés sur la MAC)
+  // Topics MQTT
   snprintf(TOPIC_DETECTION, sizeof(TOPIC_DETECTION), "neargate/detection");
   snprintf(TOPIC_COMMANDE,  sizeof(TOPIC_COMMANDE),  "neargate/commande/%s", esp32_mac);
   snprintf(TOPIC_PING,      sizeof(TOPIC_PING),      "neargate/ping/%s",     esp32_mac);
@@ -335,8 +386,8 @@ void setup() {
   // OTA
   ArduinoOTA.setHostname(mqtt_client_id);
   ArduinoOTA.setPassword("NearGate-OTA-2026!");
-  ArduinoOTA.onStart([]() { Serial.println("[OTA] Mise à jour démarrée..."); });
-  ArduinoOTA.onEnd([]()   { Serial.println("\n[OTA] Terminé. Redémarrage..."); });
+  ArduinoOTA.onStart([]()  { Serial.println("[OTA] Mise à jour démarrée..."); });
+  ArduinoOTA.onEnd([]()    { Serial.println("\n[OTA] Terminé. Redémarrage..."); });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     Serial.printf("[OTA] Progression: %u%%\r", progress * 100 / total);
   });
@@ -355,7 +406,7 @@ void setup() {
   BLEDevice::init("NearGate");
   bleScan = BLEDevice::getScan();
   bleScan->setAdvertisedDeviceCallbacks(new CallbackBLE(), true);
-  bleScan->setActiveScan(true); // scan actif pour recevoir le service data (batterie Feasycom)
+  bleScan->setActiveScan(true);
   bleScan->setInterval(100);
   bleScan->setWindow(99);
   Serial.println("[BLE] Scanner initialisé.");
@@ -363,10 +414,9 @@ void setup() {
   Serial.println("=== Prêt ===\n");
 }
 
-// ─── Loop ──────────────────────────────────────────────────────────────────
+// ─── Loop ───────────────────────────────────────────────────────────────────
 
 void loop() {
-  // OTA
   ArduinoOTA.handle();
 
   // Maintien connexion MQTT
@@ -381,6 +431,37 @@ void loop() {
   if (maintenant - dernierHeartbeat >= HEARTBEAT_INTERVAL_MS) {
     publier_heartbeat();
     dernierHeartbeat = maintenant;
+  }
+
+  // ── Traitement demande d'ouverture (posée par callback MQTT) ──────────────
+  if (demande_ouverture) {
+    demande_ouverture = false;
+    if (vehicule_present()) {
+      ouvrir_portail();
+    } else {
+      Serial.println("[RELAIS] Ouverture refusée : aucun véhicule détecté.");
+    }
+  }
+
+  // ── Maintien automatique du relais tant que le véhicule est présent ────────
+  if (relais_ouvert) {
+    unsigned long ouvert_depuis = millis() - relais_ouvert_depuis;
+
+    if (ouvert_depuis >= MAINTIEN_MAX_MS) {
+      // Sécurité : fermeture forcée après 30s
+      Serial.println("[RELAIS] Fermeture forcée (timeout sécurité 30s).");
+      fermer_portail();
+    } else if (ouvert_depuis >= MAINTIEN_MIN_MS) {
+      // Vérification périodique de la présence
+      unsigned long now = millis();
+      if (now - derniereMesure >= INTERVALLE_MESURE_MS) {
+        derniereMesure = now;
+        if (!vehicule_present()) {
+          Serial.println("[RELAIS] Véhicule parti — fermeture.");
+          fermer_portail();
+        }
+      }
+    }
   }
 
   // Scan BLE (2 secondes par cycle)

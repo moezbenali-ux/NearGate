@@ -668,6 +668,28 @@ def supprimer_portail(portail_id: str, current_user=Depends(require_role("admin"
     return {"message": "Portail supprimé."}
 
 
+@router.post("/portails/{portail_id}/capteur")
+def configurer_capteur(portail_id: str, body: dict, current_user=Depends(require_role("admin"))):
+    """Active ou bypasse le capteur ultrason JSN-SR04T de l'ESP32 associé au portail."""
+    import json as _json
+    actif = bool(body.get("actif", True))
+    conn = get_connection()
+    portail = conn.execute(
+        "SELECT esp32_mac FROM portails WHERE portail_id = ?", (portail_id,)
+    ).fetchone()
+    conn.close()
+    if not portail:
+        raise HTTPException(status_code=404, detail="Portail introuvable.")
+    if not portail["esp32_mac"]:
+        raise HTTPException(status_code=400, detail="Aucun ESP32 assigné à ce portail.")
+    mqtt_client.publish(
+        f"neargate/commande/{portail['esp32_mac']}",
+        _json.dumps({"action": "config_capteur", "actif": actif})
+    )
+    logger.info("Capteur ultrason portail %s → %s par %s", portail_id, "actif" if actif else "bypassé", current_user["email"])
+    return {"message": f"Capteur ultrason {'activé' if actif else 'bypassé'}.", "actif": actif}
+
+
 # ─── Commande manuelle ─────────────────────────────────────────────────────
 
 @router.post("/portail/{portail_id}/ouvrir")

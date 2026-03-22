@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Trash2, Pencil, Check, X } from 'lucide-react'
+import { Plus, Trash2, Pencil, Check, X, Waves } from 'lucide-react'
 import { api } from '../api'
 
 const user = () => JSON.parse(localStorage.getItem('ng_user') || '{}')
@@ -16,6 +16,8 @@ export default function Portails() {
   const [editForm,    setEditForm]    = useState({})
   const [notif,       setNotif]       = useState(null)
   const [erreur,      setErreur]      = useState(null)
+  // capteurEtat : { [portail_id]: true|false } — reflète ce qui a été envoyé à l'ESP32
+  const [capteurEtat, setCapteurEtat] = useState({})
 
   async function charger() {
     try {
@@ -68,6 +70,18 @@ export default function Portails() {
       await api.supprimerPortail(portailId)
       flash('Portail supprimé.')
       charger()
+    } catch (err) {
+      flash(err.message, false)
+    }
+  }
+
+  async function toggleCapteur(p) {
+    const actuelActif = capteurEtat[p.portail_id] !== false  // default true
+    const nouvelEtat = !actuelActif
+    try {
+      await api.configurerCapteur(p.portail_id, nouvelEtat)
+      setCapteurEtat(s => ({ ...s, [p.portail_id]: nouvelEtat }))
+      flash(nouvelEtat ? 'Capteur ultrason activé.' : 'Capteur ultrason bypassé.')
     } catch (err) {
       flash(err.message, false)
     }
@@ -181,6 +195,7 @@ export default function Portails() {
                     <th>Type</th>
                     <th>Description</th>
                     <th>NearGate Radar (MAC)</th>
+                    <th>Capteur</th>
                     <th>Statut</th>
                     {isAdmin() && <th>Actions</th>}
                   </tr>
@@ -238,6 +253,7 @@ export default function Portails() {
                               Actif
                             </label>
                           </td>
+                          <td>—</td>
                           <td>
                             <div style={{ display: 'flex', gap: 6 }}>
                               <button className="btn btn-primary btn-sm" onClick={() => sauvegarderEdit(p.portail_id)}>
@@ -260,6 +276,26 @@ export default function Portails() {
                           <td className="text-muted text-sm">{p.description || '—'}</td>
                           <td style={{ fontFamily: 'monospace', fontSize: 12, color: p.esp32_mac ? 'var(--electric)' : 'var(--slate)' }}>
                             {p.esp32_mac || <span className="text-muted">Non assigné</span>}
+                          </td>
+                          <td>
+                            {p.esp32_mac && isAdmin() ? (() => {
+                              const actif = capteurEtat[p.portail_id] !== false
+                              return (
+                                <button
+                                  onClick={() => toggleCapteur(p)}
+                                  title={actif ? 'Capteur actif — cliquer pour bypasser' : 'Capteur bypassé — cliquer pour réactiver'}
+                                  style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                                    fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 20, cursor: 'pointer', border: 'none',
+                                    background: actif ? '#00E5FF22' : '#FF6B6B22',
+                                    color: actif ? 'var(--electric)' : '#FF6B6B',
+                                  }}
+                                >
+                                  <Waves size={12} />
+                                  {actif ? 'Actif' : 'Bypassé'}
+                                </button>
+                              )
+                            })() : <span className="text-muted text-sm">—</span>}
                           </td>
                           <td>
                             {isAdmin() ? (

@@ -60,7 +60,7 @@ Utilisateur → https://app.neargate.fr → Cloudflare Tunnel → Nginx → Fast
 - [x] Sync agent vers Scaleway (`sync_agent.py`) — côté client seulement
 - [x] `.env.example` créé, `.env` hors git
 - [x] Rôles appliqués — `require_role("admin")` sur /utilisateurs (CRUD) et PUT /config
-- [ ] Serveur central Scaleway inexistant (multi-tenant)
+- [ ] Serveur central Scaleway — reporté (priorité future)
 - [x] Portails dynamiques — table `portails` en DB, CRUD `/api/portails`, machine d'états générique
 - [x] SSE opérationnel — endpoint `/api/events`, broadcast depuis mqtt_client + ouvrir_portail
 - [ ] Pas d'alertes email/push (ESP32 hors ligne, batterie faible)

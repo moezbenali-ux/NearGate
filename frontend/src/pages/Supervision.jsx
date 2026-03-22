@@ -123,7 +123,7 @@ export default function Supervision() {
             Portiques ESP32
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12, marginBottom: 36 }}>
-            {data.esp32.map(esp => <CarteESP32 key={esp.portail_id} esp={esp} />)}
+            {data.esp32.map(esp => <CarteESP32 key={esp.mac || esp.portail_id} esp={esp} />)}
           </div>
 
           {/* Section badges */}

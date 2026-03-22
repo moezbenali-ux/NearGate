@@ -480,8 +480,8 @@ def approuver_badge(body: ApprobationBadge, current_user=Depends(get_current_use
         raise HTTPException(status_code=409, detail=f"Un badge nommé « {nom} » existe déjà.")
     try:
         conn.execute(
-            "INSERT INTO badges (uuid, nom, actif) VALUES (?, ?, 1)",
-            (body.badge_key, nom),
+            "INSERT INTO badges (uuid, nom, modele, actif) VALUES (?, ?, ?, 1)",
+            (body.badge_key, nom, nom),
         )
         conn.commit()
     except Exception:

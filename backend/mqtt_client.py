@@ -305,9 +305,10 @@ def on_message(client, userdata, msg):
                     "label":      portail["nom"] if portail else "Non assigné",
                     "portail_id": portail["portail_id"] if portail else None,
                 }
-            esp32_status[mac]["vu_le"] = now
-            esp32_status[mac]["ip"]    = payload.get("ip")
-            logger.debug("Heartbeat reçu de %s (IP: %s)", mac, payload.get("ip"))
+            esp32_status[mac]["vu_le"]           = now
+            esp32_status[mac]["ip"]              = payload.get("ip")
+            esp32_status[mac]["firmware_version"] = payload.get("firmware_version")
+            logger.debug("Heartbeat reçu de %s (IP: %s, FW: %s)", mac, payload.get("ip"), payload.get("firmware_version"))
             return
 
         uuid      = payload.get("uuid", "").strip()

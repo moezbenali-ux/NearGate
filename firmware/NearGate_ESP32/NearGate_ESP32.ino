@@ -29,6 +29,10 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
+// ─── Version firmware ───────────────────────────────────────────────────────
+
+#define FIRMWARE_VERSION "2.1.0"
+
 // ─── Configuration — À MODIFIER ────────────────────────────────────────────
 
 // Wi-Fi — Hotspot NearGate (toujours fixe, généré par le Raspberry Pi)
@@ -202,11 +206,12 @@ void fermer_portail() {
 
 void publier_heartbeat() {
   if (!mqttClient.connected()) return;
-  StaticJsonDocument<128> doc;
-  doc["esp32_id"]      = esp32_mac;
-  doc["ip"]            = WiFi.localIP().toString();
-  doc["capteur_actif"] = capteur_actif;
-  char payload[128];
+  StaticJsonDocument<192> doc;
+  doc["esp32_id"]          = esp32_mac;
+  doc["ip"]                = WiFi.localIP().toString();
+  doc["capteur_actif"]     = capteur_actif;
+  doc["firmware_version"]  = FIRMWARE_VERSION;
+  char payload[192];
   serializeJson(doc, payload);
   mqttClient.publish(TOPIC_PING, payload);
   Serial.printf("[MQTT] Heartbeat publié sur %s\n", TOPIC_PING);

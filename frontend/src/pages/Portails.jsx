@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Trash2, Pencil, Check, X, Waves } from 'lucide-react'
+import { Plus, Trash2, Pencil, Check, X, Waves, Wifi, WifiOff } from 'lucide-react'
 import { api } from '../api'
 
 const user = () => JSON.parse(localStorage.getItem('ng_user') || '{}')
@@ -195,6 +195,8 @@ export default function Portails() {
                     <th>Type</th>
                     <th>Description</th>
                     <th>NearGate Radar (MAC)</th>
+                    <th>Connectivité</th>
+                    <th>Firmware</th>
                     <th>Capteur</th>
                     <th>Statut</th>
                     {isAdmin() && <th>Actions</th>}
@@ -254,6 +256,8 @@ export default function Portails() {
                             </label>
                           </td>
                           <td>—</td>
+                          <td>—</td>
+                          <td>—</td>
                           <td>
                             <div style={{ display: 'flex', gap: 6 }}>
                               <button className="btn btn-primary btn-sm" onClick={() => sauvegarderEdit(p.portail_id)}>
@@ -276,6 +280,25 @@ export default function Portails() {
                           <td className="text-muted text-sm">{p.description || '—'}</td>
                           <td style={{ fontFamily: 'monospace', fontSize: 12, color: p.esp32_mac ? 'var(--electric)' : 'var(--slate)' }}>
                             {p.esp32_mac || <span className="text-muted">Non assigné</span>}
+                          </td>
+                          <td>
+                            {p.esp32_mac == null ? (
+                              <span className="text-muted text-sm">—</span>
+                            ) : p.esp32_en_ligne ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: '#00F5A0' }}>
+                                <Wifi size={13} /> En ligne
+                              </span>
+                            ) : (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: '#FF6B6B' }}>
+                                <WifiOff size={13} /> {p.esp32_vu_le ? 'Hors ligne' : 'Jamais vu'}
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ fontSize: 12 }}>
+                            {p.esp32_firmware_version
+                              ? <span style={{ fontFamily: 'monospace', color: 'var(--electric)' }}>v{p.esp32_firmware_version}</span>
+                              : <span className="text-muted">—</span>
+                            }
                           </td>
                           <td>
                             {p.esp32_mac && isAdmin() ? (() => {

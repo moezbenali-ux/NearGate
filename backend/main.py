@@ -608,10 +608,35 @@ async def radar_scan(duree: int = 5, current_user=Depends(get_current_user)):
 
 @router.get("/portails")
 def lister_portails(current_user=Depends(get_current_user)):
+    from datetime import datetime, timedelta
     conn = get_connection()
     rows = conn.execute("SELECT * FROM portails ORDER BY cree_le ASC").fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    seuil_offline = datetime.now() - timedelta(minutes=2)
+    result = []
+    for r in rows:
+        p = dict(r)
+        mac = p.get("esp32_mac")
+        if mac and mac in esp32_status:
+            s = esp32_status[mac]
+            vu_le = s.get("vu_le")
+            en_ligne = False
+            if vu_le:
+                try:
+                    en_ligne = datetime.fromisoformat(vu_le) > seuil_offline
+                except Exception:
+                    pass
+            p["esp32_en_ligne"]        = en_ligne
+            p["esp32_vu_le"]           = vu_le
+            p["esp32_ip"]              = s.get("ip")
+            p["esp32_firmware_version"] = s.get("firmware_version")
+        else:
+            p["esp32_en_ligne"]        = None
+            p["esp32_vu_le"]           = None
+            p["esp32_ip"]              = None
+            p["esp32_firmware_version"] = None
+        result.append(p)
+    return result
 
 
 @router.post("/portails", status_code=201)

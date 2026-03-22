@@ -890,6 +890,7 @@ def supervision(current_user=Depends(get_current_user)):
             "ip":               info.get("ip"),
             "firmware_version": info.get("firmware_version"),
             "capteur_actif":    info.get("capteur_actif", True),
+            "distance_cm":      info.get("distance_cm"),
         })
 
     # Badges avec batterie + dernière détection

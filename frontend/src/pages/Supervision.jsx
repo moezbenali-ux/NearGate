@@ -125,6 +125,14 @@ export default function Connectivite() {
                     }
                   </span>
                 </div>
+                {esp.capteur_actif && esp.distance_cm != null && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--slate)' }}>Distance mesurée</span>
+                    <strong style={{ color: esp.distance_cm < 200 ? '#00F5A0' : 'var(--slate)' }}>
+                      {esp.distance_cm >= 999 ? 'Aucun obstacle' : `${esp.distance_cm} cm`}
+                    </strong>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--slate)' }}>Dernier contact</span>
                   <span style={{ color: esp.en_ligne ? 'var(--text)' : '#FF6B6B' }}>

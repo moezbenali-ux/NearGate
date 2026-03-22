@@ -211,12 +211,16 @@ void fermer_portail() {
 
 void publier_heartbeat() {
   if (!mqttClient.connected()) return;
-  StaticJsonDocument<192> doc;
+  StaticJsonDocument<256> doc;
   doc["esp32_id"]          = esp32_mac;
   doc["ip"]                = WiFi.localIP().toString();
   doc["capteur_actif"]     = capteur_actif;
   doc["firmware_version"]  = FIRMWARE_VERSION;
-  char payload[192];
+  if (capteur_actif) {
+    float dist = mesurer_distance();
+    doc["distance_cm"] = (int)dist;
+  }
+  char payload[256];
   serializeJson(doc, payload);
   mqttClient.publish(TOPIC_PING, payload);
   Serial.printf("[MQTT] Heartbeat publié sur %s\n", TOPIC_PING);

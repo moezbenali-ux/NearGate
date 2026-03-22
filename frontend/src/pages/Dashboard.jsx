@@ -109,6 +109,7 @@ export default function Dashboard() {
   if (loading) return <div className="empty">Chargement...</div>
 
   return (
+    <>
     <div className="fade-up">
       <div className="page-header">
         <h1>Vue d'ensemble</h1>
@@ -309,6 +310,7 @@ export default function Dashboard() {
             )}
         </div>
       </div>
+    </div>
     </div>
 
     {/* Toasts */}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, CreditCard, History, Settings, LogOut, Zap, Users, Menu, X, Cpu, DoorOpen } from 'lucide-react'
+import { LayoutDashboard, CreditCard, History, Settings, LogOut, Zap, Users, Menu, X, Cpu, DoorOpen, Activity } from 'lucide-react'
 import { api } from '../api'
 
 const PAGES = {
@@ -11,6 +11,7 @@ const PAGES = {
   '/configuration':  'Configuration',
   '/portails':       'NearGate Radars',
   '/firmware':       'Générateur firmware',
+  '/supervision':    'Supervision',
 }
 
 const user = () => JSON.parse(localStorage.getItem('ng_user') || '{}')
@@ -57,6 +58,9 @@ export default function Layout() {
           </NavLink>
           <NavLink to="/firmware" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <Cpu size={17} /> Firmware ESP32
+          </NavLink>
+          <NavLink to="/supervision" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+            <Activity size={17} /> Supervision
           </NavLink>
         </nav>
         <div className="sidebar-footer">

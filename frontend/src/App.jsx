@@ -7,6 +7,7 @@ import Configuration from './pages/Configuration'
 import Gestionnaires from './pages/Gestionnaires'
 import GenerateurFirmware from './pages/GenerateurFirmware'
 import Portails from './pages/Portails'
+import Supervision from './pages/Supervision'
 import Mobile from './pages/Mobile'
 import MotDePasseOublie from './pages/MotDePasseOublie'
 import ReinitialiserMdp from './pages/ReinitialiserMdp'
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="portails" element={<Portails />} />
           <Route path="gestionnaires" element={<Gestionnaires />} />
           <Route path="firmware" element={<GenerateurFirmware />} />
+          <Route path="supervision" element={<Supervision />} />
         </Route>
       </Routes>
     </BrowserRouter>

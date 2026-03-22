@@ -247,7 +247,7 @@ export default function Dashboard() {
                         </span>
                       </td>
                       <td className="text-muted">{e.rssi} dBm</td>
-                      <td className="text-muted text-sm">{e.portail_id}</td>
+                      <td className="text-muted text-sm">{portails.find(p => p.portail_id === e.portail_id)?.nom || e.portail_id}</td>
                     </tr>
                   ))}
                 </tbody>

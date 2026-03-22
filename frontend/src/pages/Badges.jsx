@@ -33,10 +33,8 @@ export default function Badges() {
   const [ajouts,  setAjouts]  = useState({})
   const [scanErr, setScanErr] = useState(null)
   const [supervision, setSupervision] = useState(null)
-  const [editNomId,    setEditNomId]    = useState(null)
-  const [editNom,      setEditNom]      = useState('')
-  const [editModeleId, setEditModeleId] = useState(null)
-  const [editModele,   setEditModele]   = useState('')
+  const [editNomId, setEditNomId] = useState(null)
+  const [editNom,   setEditNom]   = useState('')
 
   async function charger() {
     const [b, sup] = await Promise.all([api.badges(), api.supervision()])
@@ -53,10 +51,12 @@ export default function Badges() {
   async function ajouter(e) {
     e.preventDefault()
     try {
+      const nom = form.nom.trim()
       await api.ajouterBadge({
-        uuid:  form.uuid.trim(),
-        minor: form.minor ? parseInt(form.minor) : undefined,
-        nom:   form.nom.trim(),
+        uuid:   form.uuid.trim(),
+        minor:  form.minor ? parseInt(form.minor) : undefined,
+        nom,
+        modele: nom,
       })
       setForm({ uuid: '', minor: '', nom: '' })
       afficherNotif('Badge ajouté avec succès.')
@@ -74,19 +74,6 @@ export default function Badges() {
     try {
       await api.modifierBadge(b.uuid, { nom: editNom.trim() })
       setEditNomId(null)
-      charger()
-    } catch (err) { afficherNotif(err.message, 'err') }
-  }
-
-  function commencerEditModele(b) {
-    setEditModeleId(b.uuid)
-    setEditModele(b.modele || '')
-  }
-
-  async function sauvegarderModele(b) {
-    try {
-      await api.modifierBadge(b.uuid, { modele: editModele.trim() || null })
-      setEditModeleId(null)
       charger()
     } catch (err) { afficherNotif(err.message, 'err') }
   }
@@ -125,7 +112,7 @@ export default function Badges() {
       const nom = ap.nom_ble && ap.nom_ble !== 'Inconnu'
         ? ap.nom_ble
         : `Badge Minor ${ap.minor ?? ap.uuid_ibeacon?.slice(0, 8)}`
-      await api.ajouterBadge({ uuid: ap.uuid_ibeacon, minor: ap.minor, nom, actif: true })
+      await api.ajouterBadge({ uuid: ap.uuid_ibeacon, minor: ap.minor, nom, modele: nom, actif: true })
       setAjouts(a => ({ ...a, [key]: 'ok' }))
       setScan(s => ({ ...s, appareils: s.appareils.map(x => x.adresse === ap.adresse ? { ...x, enregistre: true } : x) }))
       charger()
@@ -314,29 +301,9 @@ export default function Badges() {
                         )}
                       </td>
                       <td>
-                        {editModeleId === b.uuid ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <input
-                              value={editModele}
-                              onChange={e => setEditModele(e.target.value)}
-                              onKeyDown={e => { if (e.key === 'Enter') sauvegarderModele(b); if (e.key === 'Escape') setEditModeleId(null) }}
-                              autoFocus
-                              placeholder="ex : FSC-BP104EA"
-                              style={{ fontSize: 13, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--electric)', background: 'var(--navy-light)', color: 'var(--text)', width: 140 }}
-                            />
-                            <button className="btn btn-primary btn-sm" onClick={() => sauvegarderModele(b)}><Check size={12} /></button>
-                            <button className="btn btn-ghost btn-sm" onClick={() => setEditModeleId(null)}><X size={12} /></button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 13, fontFamily: b.modele ? 'monospace' : 'inherit', color: b.modele ? 'var(--text)' : 'var(--slate)' }}>
-                              {b.modele || '—'}
-                            </span>
-                            <button onClick={() => commencerEditModele(b)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate)', padding: 2, display: 'flex' }}>
-                              <Pencil size={12} />
-                            </button>
-                          </div>
-                        )}
+                        <span style={{ fontSize: 13, fontFamily: b.modele ? 'monospace' : 'inherit', color: b.modele ? 'var(--text)' : 'var(--slate)' }}>
+                          {b.modele || '—'}
+                        </span>
                       </td>
                       <td className="text-muted text-sm" style={{ fontFamily: 'monospace', fontSize: 12 }}>{b.uuid}</td>
                       <td><span className={`badge ${b.actif ? 'actif' : 'inactif'}`}>{b.actif ? 'Actif' : 'Inactif'}</span></td>
@@ -410,7 +377,7 @@ export default function Badges() {
                       <td style={{ fontSize: 13, color: 'var(--slate)' }}>
                         {b.derniere_vue_le
                           ? (() => {
-                              const diff = Math.floor((Date.now() - new Date(b.derniere_vue_le.replace(' ', 'T') + 'Z').getTime()) / 1000)
+                              const diff = Math.floor((Date.now() - new Date(b.derniere_vue_le.replace(' ', 'T')).getTime()) / 1000)
                               if (diff < 60)    return `il y a ${diff}s`
                               if (diff < 3600)  return `il y a ${Math.floor(diff / 60)}min`
                               if (diff < 86400) return `il y a ${Math.floor(diff / 3600)}h`

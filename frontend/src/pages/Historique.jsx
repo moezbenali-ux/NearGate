@@ -4,9 +4,7 @@ import { api } from '../api'
 
 function fmt(iso) {
   if (!iso) return '—'
-  // SQLite stocke en UTC sans suffixe — le 'Z' force l'interprétation UTC
-  // pour que toLocaleString applique la conversion vers l'heure du navigateur.
-  return new Date(iso.replace(' ', 'T') + 'Z').toLocaleString('fr-FR')
+  return new Date(iso.replace(' ', 'T')).toLocaleString('fr-FR')
 }
 
 export default function Historique() {

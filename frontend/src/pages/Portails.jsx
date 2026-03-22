@@ -5,7 +5,7 @@ import { api } from '../api'
 const user    = () => JSON.parse(localStorage.getItem('ng_user') || '{}')
 const isAdmin = () => user().role === 'admin'
 
-const VIDE = { portail_id: '', nom: '', type: 'entree', description: '', actif: true }
+const VIDE = { portail_id: '', nom: '', type: 'entree', description: '', actif: true, esp32_mac: '' }
 
 function tempsRelatif(dateStr) {
   if (!dateStr) return null
@@ -175,7 +175,7 @@ export default function Portails() {
           <button className="btn btn-ghost btn-sm" onClick={charger}><RefreshCw size={13} /> Actualiser</button>
           {isAdmin() && (
             <button className="btn btn-primary" onClick={() => setAjout(v => !v)}>
-              <Plus size={15} /> Ajouter un portail
+              <Plus size={15} /> Assigner un Radar
             </button>
           )}
         </div>
@@ -215,22 +215,37 @@ export default function Portails() {
         </div>
       </div>
 
-      {/* ── Formulaire d'ajout ── */}
+      {/* ── Formulaire d'assignation ── */}
       {ajout && isAdmin() && (
         <div className="box" style={{ marginBottom: 24 }}>
-          <div className="box-header"><h2>Nouveau portail</h2></div>
+          <div className="box-header"><h2>Assigner un NearGate Radar</h2></div>
           <form className="box-body" onSubmit={ajouter}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, marginBottom: 16 }}>
-              <div className="field">
-                <label>Identifiant <span className="text-muted text-sm">(sans espaces)</span></label>
-                <input
-                  placeholder="ex : entree_nord"
-                  value={form.portail_id}
-                  onChange={e => setForm(f => ({ ...f, portail_id: e.target.value.toLowerCase().replace(/\s/g, '_') }))}
+
+            {/* Sélection du radar */}
+            <div className="field" style={{ marginBottom: 20 }}>
+              <label>NearGate Radar <span className="text-muted text-sm">(choisir parmi les radars non assignés)</span></label>
+              {radars.filter(r => !r.portail_id).length === 0 ? (
+                <div style={{ padding: '10px 14px', background: '#FFB34722', border: '1px solid #FFB34755', borderRadius: 8, fontSize: 13, color: '#FFB347' }}>
+                  Aucun radar non assigné disponible. Vérifiez la connexion des boîtiers.
+                </div>
+              ) : (
+                <select
+                  value={form.esp32_mac}
+                  onChange={e => setForm(f => ({ ...f, esp32_mac: e.target.value }))}
                   required
-                  style={{ fontFamily: 'monospace', fontSize: 13 }}
-                />
-              </div>
+                  style={{ background: 'var(--navy-light)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '8px 12px', fontSize: 13, width: '100%', maxWidth: 420 }}
+                >
+                  <option value="">— Sélectionner un radar —</option>
+                  {radars.filter(r => !r.portail_id).map(r => (
+                    <option key={r.mac} value={r.mac}>
+                      {r.mac}{r.firmware_version ? ` — v${r.firmware_version}` : ''}{r.en_ligne ? ' ✓ En ligne' : ' (hors ligne)'}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, marginBottom: 16 }}>
               <div className="field">
                 <label>Nom affiché</label>
                 <input
@@ -249,6 +264,16 @@ export default function Portails() {
                 </select>
               </div>
               <div className="field">
+                <label>Identifiant <span className="text-muted text-sm">(généré automatiquement)</span></label>
+                <input
+                  placeholder="ex : entree_nord"
+                  value={form.portail_id}
+                  onChange={e => setForm(f => ({ ...f, portail_id: e.target.value.toLowerCase().replace(/\s/g, '_') }))}
+                  required
+                  style={{ fontFamily: 'monospace', fontSize: 13 }}
+                />
+              </div>
+              <div className="field">
                 <label>Description <span className="text-muted text-sm">(optionnel)</span></label>
                 <input
                   placeholder="ex : Portail sous-sol niveau -1"
@@ -258,7 +283,7 @@ export default function Portails() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="submit" className="btn btn-primary btn-sm"><Check size={14} /> Créer</button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={!form.esp32_mac}><Check size={14} /> Créer et assigner</button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAjout(false); setForm(VIDE) }}>Annuler</button>
             </div>
           </form>
@@ -309,29 +334,13 @@ export default function Portails() {
                             </select>
                           </td>
                           <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                              <input
-                                value={editForm.esp32_mac}
-                                onChange={e => setEditForm(f => ({ ...f, esp32_mac: e.target.value.toLowerCase().replace(/[^0-9a-f]/g, '') }))}
-                                style={{ width: '100%', fontSize: 13, fontFamily: 'monospace' }}
-                                placeholder="ex : a4cf12abcdef"
-                                maxLength={12}
-                              />
-                              {radars.filter(r => !r.portail_id).length > 0 && (
-                                <select
-                                  defaultValue=""
-                                  onChange={e => { if (e.target.value) setEditForm(f => ({ ...f, esp32_mac: e.target.value })) }}
-                                  style={{ fontSize: 12, background: 'var(--navy-light)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '3px 6px' }}
-                                >
-                                  <option value="">Assigner un radar…</option>
-                                  {radars.filter(r => !r.portail_id).map(r => (
-                                    <option key={r.mac} value={r.mac}>
-                                      {r.mac}{r.en_ligne ? ' ✓' : ' (hors ligne)'}
-                                    </option>
-                                  ))}
-                                </select>
-                              )}
-                            </div>
+                            <input
+                              value={editForm.esp32_mac}
+                              onChange={e => setEditForm(f => ({ ...f, esp32_mac: e.target.value.toLowerCase().replace(/[^0-9a-f]/g, '') }))}
+                              style={{ width: '100%', fontSize: 13, fontFamily: 'monospace' }}
+                              placeholder="ex : a4cf12abcdef"
+                              maxLength={12}
+                            />
                           </td>
                           <td>—</td>
                           <td>—</td>

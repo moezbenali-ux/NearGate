@@ -137,6 +137,7 @@ class PortailCreation(BaseModel):
     type: Optional[str] = "entree"
     description: Optional[str] = None
     actif: Optional[bool] = True
+    esp32_mac: Optional[str] = None
 
 
 class PortailMiseAJour(BaseModel):
@@ -644,8 +645,8 @@ def creer_portail(p: PortailCreation, current_user=Depends(require_role("admin")
     conn = get_connection()
     try:
         conn.execute(
-            "INSERT INTO portails (portail_id, nom, type, description, actif) VALUES (?, ?, ?, ?, ?)",
-            (p.portail_id.strip(), p.nom.strip(), p.type, p.description, int(p.actif)),
+            "INSERT INTO portails (portail_id, nom, type, description, actif, esp32_mac) VALUES (?, ?, ?, ?, ?, ?)",
+            (p.portail_id.strip(), p.nom.strip(), p.type, p.description, int(p.actif), p.esp32_mac or None),
         )
         conn.commit()
     except Exception:

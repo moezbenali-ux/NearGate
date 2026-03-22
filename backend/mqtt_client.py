@@ -17,9 +17,11 @@ Topics :
 import json
 import os
 import logging
+import smtplib
 import threading
 import time
 from datetime import datetime, timedelta
+from email.mime.text import MIMEText
 
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
@@ -44,6 +46,59 @@ esp32_status: dict = {}
 
 # Déduplication BLE — uuid → datetime de la dernière action déclenchée
 _dedup_cache: dict = {}
+
+# Alertes déjà envoyées — évite le spam (clé → date de dernière alerte)
+_alertes_envoyees: dict = {}  # ex: "offline:B0:CB:D8:8B:87:88" → date
+
+
+# ─── Email alertes ──────────────────────────────────────────────────────────
+
+def _envoyer_alerte(sujet: str, corps: str):
+    """Envoie un email d'alerte à tous les gestionnaires actifs."""
+    try:
+        conn = get_connection()
+        destinataires = [
+            r["email"] for r in conn.execute(
+                "SELECT email FROM utilisateurs WHERE actif = 1"
+            ).fetchall()
+        ]
+        conn.close()
+
+        if not destinataires:
+            return
+
+        smtp_host = os.getenv("SMTP_HOST", "smtp.resend.com")
+        smtp_port = int(os.getenv("SMTP_PORT", 587))
+        smtp_user = os.getenv("SMTP_USER", "resend")
+        smtp_pass = os.getenv("SMTP_PASSWORD", "")
+        smtp_from = os.getenv("SMTP_FROM", "noreply@neargate.fr")
+
+        if not smtp_pass:
+            logger.warning("Alerte non envoyée : SMTP_PASSWORD absent")
+            return
+
+        msg = MIMEText(corps, "plain", "utf-8")
+        msg["Subject"] = f"[NearGate] {sujet}"
+        msg["From"]    = f"NearGate <{smtp_from}>"
+        msg["To"]      = ", ".join(destinataires)
+
+        with smtplib.SMTP(smtp_host, smtp_port) as smtp:
+            smtp.starttls()
+            smtp.login(smtp_user, smtp_pass)
+            smtp.send_message(msg)
+
+        logger.info("Alerte envoyée : %s → %s", sujet, destinataires)
+    except Exception as e:
+        logger.error("Erreur envoi alerte email : %s", e)
+
+
+def _alerte_si_nouvelle(cle: str, sujet: str, corps: str, cooldown_heures: int = 4):
+    """N'envoie l'alerte que si elle n'a pas déjà été envoyée dans les dernières heures."""
+    derniere = _alertes_envoyees.get(cle)
+    if derniere and (datetime.now() - derniere).total_seconds() < cooldown_heures * 3600:
+        return
+    _alertes_envoyees[cle] = datetime.now()
+    threading.Thread(target=_envoyer_alerte, args=(sujet, corps), daemon=True).start()
 
 
 # ─── Helpers config / DB ───────────────────────────────────────────────────
@@ -285,6 +340,45 @@ def _nettoyage_periodique():
                 logger.info("Nettoyage : %d badge(s) libéré(s) par timeout", result.rowcount)
             conn.commit()
             conn.close()
+
+            # ── Alertes ESP32 hors ligne ──────────────────────────────────
+            seuil_offline = datetime.now() - timedelta(minutes=2)
+            for mac, info in esp32_status.items():
+                vu_le_str = info.get("vu_le")
+                if not vu_le_str:
+                    continue
+                try:
+                    vu_le_dt = datetime.fromisoformat(vu_le_str)
+                except ValueError:
+                    continue
+                label = info.get("label") or info.get("portail_id") or mac
+                if vu_le_dt < seuil_offline:
+                    _alerte_si_nouvelle(
+                        f"offline:{mac}",
+                        f"NearGate Radar hors ligne : {label}",
+                        f"Le NearGate Radar « {label} » (MAC : {mac}) n'a plus envoyé de signal depuis {vu_le_str}.\n\n"
+                        f"Vérifiez l'alimentation et la connexion Wi-Fi du radar.\n\n— NearGate",
+                        cooldown_heures=4,
+                    )
+                else:
+                    # Radar de retour en ligne : réinitialise l'alerte pour notifier à nouveau si ça repart
+                    _alertes_envoyees.pop(f"offline:{mac}", None)
+
+            # ── Alertes batterie faible ───────────────────────────────────
+            conn_bat = get_connection()
+            badges_bat = conn_bat.execute(
+                "SELECT uuid, nom, batterie_pct FROM badges WHERE actif = 1 AND batterie_pct IS NOT NULL AND batterie_pct <= 20"
+            ).fetchall()
+            conn_bat.close()
+            for b in badges_bat:
+                cle = f"batterie:{b['uuid']}:{datetime.now().date()}"
+                _alerte_si_nouvelle(
+                    cle,
+                    f"Batterie faible : {b['nom']}",
+                    f"Le badge « {b['nom']} » a une batterie faible ({b['batterie_pct']}%).\n\n"
+                    f"Pensez à remplacer la pile rapidement pour éviter une interruption d'accès.\n\n— NearGate",
+                    cooldown_heures=24,
+                )
 
             # Purge des événements anciens (une fois par jour)
             aujourd_hui = datetime.now().date()

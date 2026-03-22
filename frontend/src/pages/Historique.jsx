@@ -1,10 +1,33 @@
 import { useState, useEffect } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, Download } from 'lucide-react'
 import { api } from '../api'
 
 function fmt(iso) {
   if (!iso) return '—'
   return new Date(iso.replace(' ', 'T')).toLocaleString('fr-FR')
+}
+
+function exporterCSV(evenements) {
+  const entete = ['Date/Heure', 'Utilisateur', 'UUID', 'Direction', 'Action', 'RSSI (dBm)', 'Portail']
+  const lignes = evenements.map(e => [
+    fmt(e.horodatage),
+    e.badge_nom || '',
+    e.badge_uuid,
+    e.direction,
+    e.action,
+    e.rssi ?? '',
+    e.portail_id,
+  ])
+  const csv = [entete, ...lignes]
+    .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'))
+    .join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `neargate_historique_${new Date().toLocaleDateString('fr-CA')}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 export default function Historique() {
@@ -31,7 +54,12 @@ export default function Historique() {
       <div className="box">
         <div className="box-header">
           <h2>Filtres</h2>
-          <button className="btn btn-ghost btn-sm" onClick={charger}><RefreshCw size={13} /> Actualiser</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={charger}><RefreshCw size={13} /> Actualiser</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => exporterCSV(evenements)} disabled={evenements.length === 0}>
+              <Download size={13} /> Exporter CSV
+            </button>
+          </div>
         </div>
         <div className="box-body">
           <div className="form-row">
@@ -49,6 +77,7 @@ export default function Historique() {
                 <option value={50}>50 derniers</option>
                 <option value={100}>100 derniers</option>
                 <option value={500}>500 derniers</option>
+                <option value={1000}>1000 derniers</option>
               </select>
             </div>
           </div>

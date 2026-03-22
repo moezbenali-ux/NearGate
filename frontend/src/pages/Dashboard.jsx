@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Car, Activity, RefreshCw, LogOut as LogOutIcon, Filter, Zap } from 'lucide-react'
 import { api } from '../api'
 
@@ -38,6 +38,7 @@ export default function Dashboard() {
   const [evenements, setEvenements] = useState([])
   const [portails,   setPortails]   = useState([])
   const [loading,    setLoading]    = useState(true)
+  const debounceRef = useRef(null)
   const [libererConfirm,    setLibererConfirm]    = useState(null)
   const [ouvertureEnCours,  setOuvertureEnCours]  = useState(null) // portail_id en cours d'ouverture
   const [toasts,            setToasts]            = useState([])
@@ -69,7 +70,12 @@ export default function Dashboard() {
     if (!token) return
     const es = new EventSource(`/api/events?token=${encodeURIComponent(token)}`)
     es.onmessage = (e) => {
-      try { if (JSON.parse(e.data).type === 'evenement') charger() } catch {}
+      try {
+        if (JSON.parse(e.data).type === 'evenement') {
+          clearTimeout(debounceRef.current)
+          debounceRef.current = setTimeout(charger, 500)
+        }
+      } catch {}
     }
     return () => es.close()
   }, [])

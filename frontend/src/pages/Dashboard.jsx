@@ -50,6 +50,7 @@ export default function Dashboard() {
 
   // Filtres
   const [filtreDirection, setFiltreDirection] = useState('tous')   // 'tous' | 'entree' | 'sortie'
+  const [filtrePresence,  setFiltrePresence]  = useState(false)   // false = présence masquée
   const [filtreConnu,     setFiltreConnu]     = useState('connu')  // 'tous' | 'connu' | 'inconnu'
   const [filtreUser,      setFiltreUser]      = useState('')
   const [filtrePortail,   setFiltrePortail]   = useState('')
@@ -90,6 +91,7 @@ export default function Dashboard() {
     return evenements.filter(e => {
       if (filtreDirection !== 'tous' && e.direction !== filtreDirection) return false
       const estManuel = e.badge_uuid?.startsWith('manuel:')
+      if (!filtrePresence && e.direction === 'présence') return false
       if (filtreConnu === 'connu'   && !e.badge_nom && !estManuel) return false
       if (filtreConnu === 'inconnu' && (e.badge_nom || estManuel)) return false
       if (filtreUser  && e.badge_nom !== filtreUser)  return false
@@ -100,11 +102,12 @@ export default function Dashboard() {
     })
   }, [evenements, filtreDirection, filtreConnu, filtreUser, filtrePortail, filtrePeriode, today, il7j])
 
-  const filtresActifs = filtreDirection !== 'tous' || filtreConnu !== 'tous' || filtreUser || filtrePortail || filtrePeriode !== 'today'
+  const filtresActifs = filtreDirection !== 'tous' || filtreConnu !== 'tous' || filtreUser || filtrePortail || filtrePeriode !== 'today' || filtrePresence
 
   function resetFiltres() {
     setFiltreDirection('tous'); setFiltreConnu('tous')
     setFiltreUser(''); setFiltrePortail(''); setFiltrePeriode('today')
+    setFiltrePresence(false)
   }
 
   if (loading) return <div className="empty">Chargement...</div>
@@ -246,6 +249,12 @@ export default function Dashboard() {
               <span key={val} style={PILL_STYLE(filtreDirection === val)} onClick={() => setFiltreDirection(val)}>{label}</span>
             ))}
           </div>
+
+          <span
+            style={PILL_STYLE(filtrePresence)}
+            onClick={() => setFiltrePresence(v => !v)}
+            title="Afficher les événements de présence (badge détecté mais RSSI insuffisant)"
+          >· Présence</span>
 
           <div style={{ width: 1, height: 22, background: 'var(--border, #2a3a50)' }} />
 

@@ -488,10 +488,16 @@ def lister_evenements(
     current_user=Depends(get_current_user),
 ):
     conn = get_connection()
+    # Sous-requête scalaire : cherche d'abord uuid exact, sinon match par préfixe UUID sans minor
+    # (compatibilité avec anciens événements enregistrés avant l'ajout du champ minor)
     base_query = """
-        SELECT e.*, b.nom AS badge_nom
+        SELECT e.*,
+            (SELECT nom FROM badges
+             WHERE uuid = e.badge_uuid
+                OR uuid LIKE (e.badge_uuid || ':%')
+                OR e.badge_uuid LIKE (uuid || ':%')
+             LIMIT 1) AS badge_nom
         FROM evenements e
-        LEFT JOIN badges b ON b.uuid = e.badge_uuid
     """
     if direction:
         rows = conn.execute(

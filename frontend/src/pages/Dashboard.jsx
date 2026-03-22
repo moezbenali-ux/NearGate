@@ -41,7 +41,7 @@ export default function Dashboard() {
 
   // Filtres
   const [filtreDirection, setFiltreDirection] = useState('tous')   // 'tous' | 'entree' | 'sortie'
-  const [filtreConnu,     setFiltreConnu]     = useState('tous')   // 'tous' | 'connu' | 'inconnu'
+  const [filtreConnu,     setFiltreConnu]     = useState('connu')  // 'tous' | 'connu' | 'inconnu'
   const [filtreUser,      setFiltreUser]      = useState('')
   const [filtrePortail,   setFiltrePortail]   = useState('')
   const [filtrePeriode,   setFiltrePeriode]   = useState('today')  // 'today' | '7j' | 'tout'

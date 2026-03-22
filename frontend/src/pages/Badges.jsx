@@ -33,8 +33,10 @@ export default function Badges() {
   const [ajouts,  setAjouts]  = useState({})
   const [scanErr, setScanErr] = useState(null)
   const [supervision, setSupervision] = useState(null)
-  const [editNomId,   setEditNomId]   = useState(null)
-  const [editNom,     setEditNom]     = useState('')
+  const [editNomId,    setEditNomId]    = useState(null)
+  const [editNom,      setEditNom]      = useState('')
+  const [editModeleId, setEditModeleId] = useState(null)
+  const [editModele,   setEditModele]   = useState('')
 
   async function charger() {
     const [b, sup] = await Promise.all([api.badges(), api.supervision()])
@@ -72,6 +74,19 @@ export default function Badges() {
     try {
       await api.modifierBadge(b.uuid, { nom: editNom.trim() })
       setEditNomId(null)
+      charger()
+    } catch (err) { afficherNotif(err.message, 'err') }
+  }
+
+  function commencerEditModele(b) {
+    setEditModeleId(b.uuid)
+    setEditModele(b.modele || '')
+  }
+
+  async function sauvegarderModele(b) {
+    try {
+      await api.modifierBadge(b.uuid, { modele: editModele.trim() || null })
+      setEditModeleId(null)
       charger()
     } catch (err) { afficherNotif(err.message, 'err') }
   }
@@ -271,7 +286,7 @@ export default function Badges() {
             : (
               <table>
                 <thead>
-                  <tr><th>Nom</th><th>Identifiant (UUID:Minor)</th><th>Statut</th><th>Créé le</th><th>Actions</th></tr>
+                  <tr><th>Nom</th><th>Modèle</th><th>Identifiant (UUID:Minor)</th><th>Statut</th><th>Créé le</th><th>Actions</th></tr>
                 </thead>
                 <tbody>
                   {badges.map(b => (
@@ -293,6 +308,31 @@ export default function Badges() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <strong>{b.nom}</strong>
                             <button onClick={() => commencerEditNom(b)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate)', padding: 2, display: 'flex' }}>
+                              <Pencil size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        {editModeleId === b.uuid ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                              value={editModele}
+                              onChange={e => setEditModele(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') sauvegarderModele(b); if (e.key === 'Escape') setEditModeleId(null) }}
+                              autoFocus
+                              placeholder="ex : FSC-BP104EA"
+                              style={{ fontSize: 13, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--electric)', background: 'var(--navy-light)', color: 'var(--text)', width: 140 }}
+                            />
+                            <button className="btn btn-primary btn-sm" onClick={() => sauvegarderModele(b)}><Check size={12} /></button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setEditModeleId(null)}><X size={12} /></button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 13, fontFamily: b.modele ? 'monospace' : 'inherit', color: b.modele ? 'var(--text)' : 'var(--slate)' }}>
+                              {b.modele || '—'}
+                            </span>
+                            <button onClick={() => commencerEditModele(b)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate)', padding: 2, display: 'flex' }}>
                               <Pencil size={12} />
                             </button>
                           </div>

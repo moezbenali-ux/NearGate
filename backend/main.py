@@ -98,13 +98,15 @@ def require_role(role: str):
 
 class BadgeCreation(BaseModel):
     uuid: str
-    minor: Optional[int] = None  # Minor iBeacon — requis pour badges KKM K7P multi-UUID
+    minor: Optional[int] = None
     nom: str
+    modele: Optional[str] = None
     actif: Optional[bool] = True
 
 
 class BadgeMiseAJour(BaseModel):
     nom: Optional[str] = None
+    modele: Optional[str] = None
     actif: Optional[bool] = None
 
 
@@ -382,8 +384,8 @@ def ajouter_badge(badge: BadgeCreation, current_user=Depends(get_current_user)):
     conn = get_connection()
     try:
         conn.execute(
-            "INSERT INTO badges (uuid, nom, actif) VALUES (?, ?, ?)",
-            (badge_key, badge.nom.strip(), int(badge.actif)),
+            "INSERT INTO badges (uuid, nom, modele, actif) VALUES (?, ?, ?, ?)",
+            (badge_key, badge.nom.strip(), badge.modele, int(badge.actif)),
         )
         conn.commit()
     except Exception:
@@ -402,6 +404,8 @@ def modifier_badge(uuid: str, maj: BadgeMiseAJour, current_user=Depends(get_curr
         raise HTTPException(status_code=404, detail="Badge introuvable.")
     if maj.nom is not None:
         conn.execute("UPDATE badges SET nom = ? WHERE uuid = ?", (maj.nom, uuid))
+    if maj.modele is not None:
+        conn.execute("UPDATE badges SET modele = ? WHERE uuid = ?", (maj.modele, uuid))
     if maj.actif is not None:
         conn.execute("UPDATE badges SET actif = ? WHERE uuid = ?", (int(maj.actif), uuid))
     conn.commit()

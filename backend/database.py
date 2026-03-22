@@ -102,6 +102,7 @@ def init_db():
         ("batterie_pct",    "INTEGER"),
         ("batterie_vue_le", "TEXT"),
         ("derniere_vue_le", "TEXT"),
+        ("modele",          "TEXT"),
     ]:
         try:
             cursor.execute(f"ALTER TABLE badges ADD COLUMN {col} {definition}")

@@ -10,7 +10,7 @@ const PAGES = {
   '/gestionnaires':  'Gestionnaires',
   '/configuration':  'Configuration',
   '/portails':       'NearGate Radars',
-  '/firmware':       'Générateur firmware',
+  '/firmware':       'Mises à jour',
   '/supervision':    'Connectivité',
 }
 
@@ -38,11 +38,9 @@ export default function Layout() {
           NearGate
         </div>
         <nav className="sidebar-nav">
+          <div className="nav-section">Opérations</div>
           <NavLink to="/" end onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <LayoutDashboard size={17} /> Dashboard
-          </NavLink>
-          <NavLink to="/portails" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            <DoorOpen size={17} /> NearGate Radars
           </NavLink>
           <NavLink to="/badges" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <CreditCard size={17} /> Badges
@@ -50,6 +48,16 @@ export default function Layout() {
           <NavLink to="/historique" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <History size={17} /> Historique
           </NavLink>
+
+          <div className="nav-section">Infrastructure</div>
+          <NavLink to="/portails" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+            <DoorOpen size={17} /> NearGate Radars
+          </NavLink>
+          <NavLink to="/supervision" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+            <Activity size={17} /> Connectivité
+          </NavLink>
+
+          <div className="nav-section">Administration</div>
           <NavLink to="/gestionnaires" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <Users size={17} /> Gestionnaires
           </NavLink>
@@ -57,10 +65,7 @@ export default function Layout() {
             <Settings size={17} /> Configuration
           </NavLink>
           <NavLink to="/firmware" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            <Cpu size={17} /> Firmware ESP32
-          </NavLink>
-          <NavLink to="/supervision" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            <Activity size={17} /> Connectivité
+            <Cpu size={17} /> Mises à jour
           </NavLink>
         </nav>
         <div className="sidebar-footer">

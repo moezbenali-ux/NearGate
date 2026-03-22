@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Pencil, Check, X, Waves, Wifi, WifiOff, Clock, RefreshCw } from 'lucide-react'
+import { Plus, Trash2, Pencil, Check, X, Waves, Wifi, WifiOff, Clock, RefreshCw, Upload, AlertTriangle } from 'lucide-react'
 import { api } from '../api'
 
 const user    = () => JSON.parse(localStorage.getItem('ng_user') || '{}')
@@ -16,7 +16,11 @@ function tempsRelatif(dateStr) {
   return `il y a ${Math.floor(diff / 86400)}j`
 }
 
-function CarteRadar({ radar }) {
+function CarteRadar({ radar, latestVersion, onOta, otaLoading }) {
+  const aJour = latestVersion && radar.firmware_version === latestVersion
+  const outdated = latestVersion && (!radar.firmware_version || radar.firmware_version !== latestVersion)
+  const enMaj = otaLoading === radar.mac
+
   return (
     <div style={{
       background: 'var(--card)',
@@ -24,13 +28,13 @@ function CarteRadar({ radar }) {
       borderRadius: 12,
       padding: '16px 20px',
       display: 'flex',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       gap: 14,
     }}>
       <div style={{
         width: 40, height: 40, borderRadius: '50%',
         background: radar.en_ligne ? '#00F5A022' : '#FF6B6B22',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2,
       }}>
         {radar.en_ligne
           ? <Wifi size={18} color="#00F5A0" />
@@ -54,17 +58,37 @@ function CarteRadar({ radar }) {
             </span>
           )}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--slate)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12, color: 'var(--slate)', display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: outdated ? 10 : 0 }}>
           <span style={{ fontFamily: 'monospace', color: 'var(--electric)' }}>{radar.mac}</span>
           {radar.ip && <span>IP : <strong style={{ color: 'var(--text)' }}>{radar.ip}</strong></span>}
-          {radar.firmware_version && (
-            <span>Firmware : <strong style={{ color: 'var(--text)', fontFamily: 'monospace' }}>v{radar.firmware_version}</strong></span>
-          )}
+          {radar.firmware_version
+            ? <span>Firmware : <strong style={{ color: aJour ? '#00F5A0' : '#FFB347', fontFamily: 'monospace' }}>v{radar.firmware_version}</strong>{aJour ? ' ✓' : ` → v${latestVersion} dispo`}</span>
+            : latestVersion ? <span style={{ color: '#FFB347' }}>Firmware : <strong>inconnu</strong> → v{latestVersion} dispo</span> : null
+          }
           {radar.vu_le
             ? <span><Clock size={11} style={{ verticalAlign: 'middle', marginRight: 3 }} />Vu {tempsRelatif(radar.vu_le)}</span>
             : <span style={{ color: '#FF6B6B' }}>Jamais vu — vérifiez la connexion</span>
           }
         </div>
+        {outdated && radar.en_ligne && (
+          <button
+            onClick={() => onOta(radar.mac)}
+            disabled={enMaj}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4,
+              fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 8, cursor: enMaj ? 'wait' : 'pointer',
+              background: enMaj ? '#FFB34722' : '#FFB347',
+              color: enMaj ? '#FFB347' : '#080E1A',
+              border: 'none',
+              opacity: enMaj ? 0.7 : 1,
+            }}
+          >
+            {enMaj ? '⏳ Mise à jour en cours…' : '⬆ Mettre à jour le firmware'}
+          </button>
+        )}
+        {outdated && !radar.en_ligne && (
+          <div style={{ fontSize: 11, color: '#FFB347', marginTop: 4 }}>⚠ Mise à jour disponible — connectez le radar pour l'appliquer</div>
+        )}
       </div>
     </div>
   )
@@ -80,12 +104,15 @@ export default function Portails() {
   const [notif,       setNotif]       = useState(null)
   const [erreur,      setErreur]      = useState(null)
   const [capteurEtat, setCapteurEtat] = useState({})
+  const [firmwareInfo, setFirmwareInfo] = useState(null)
+  const [otaLoading,   setOtaLoading]   = useState(null)
 
   const charger = useCallback(async () => {
     try {
-      const [p, sup] = await Promise.all([api.portails(), api.supervision()])
+      const [p, sup, fw] = await Promise.all([api.portails(), api.supervision(), api.firmwareInfo()])
       setPortails(p)
       setRadars(sup.esp32)
+      setFirmwareInfo(fw)
     } catch (e) {
       setErreur(e.message)
     }
@@ -164,6 +191,18 @@ export default function Portails() {
     }
   }
 
+  async function lancerOta(mac) {
+    setOtaLoading(mac)
+    try {
+      await api.radarOta(mac)
+      flash(`Commande OTA envoyée au radar ${mac}. L'ESP32 va se mettre à jour et redémarrer.`)
+    } catch (e) {
+      flash(e.message, false)
+    } finally {
+      setOtaLoading(null)
+    }
+  }
+
   return (
     <div className="fade-up">
       <div className="page-header">
@@ -209,7 +248,7 @@ export default function Portails() {
             <div className="empty">Aucun NearGate Radar détecté. Vérifiez la connexion WiFi des boîtiers.</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
-              {radars.map(r => <CarteRadar key={r.mac} radar={r} />)}
+              {radars.map(r => <CarteRadar key={r.mac} radar={r} latestVersion={firmwareInfo?.version} onOta={lancerOta} otaLoading={otaLoading} />)}
             </div>
           )}
         </div>

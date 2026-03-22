@@ -88,6 +88,8 @@ export const api = {
   modifierPortail: (portailId, data) => req('PATCH', `/portails/${portailId}`, data),
   supprimerPortail: (portailId) => req('DELETE', `/portails/${portailId}`),
   configurerCapteur: (portailId, actif) => req('POST', `/portails/${portailId}/capteur`, { actif }),
+  firmwareInfo: () => req('GET', '/firmware/info'),
+  radarOta: (mac) => req('POST', `/radar/${mac}/ota`),
 
   // Commande manuelle
   ouvrirPortail: (portailId) => req('POST', `/portail/${portailId}/ouvrir`),

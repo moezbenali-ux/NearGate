@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Download, Copy, Check, Code2 } from 'lucide-react'
+import { Download, Copy, Check, Code2, Upload, AlertCircle } from 'lucide-react'
 import { api } from '../api'
 
 const DEFAULTS = {
@@ -365,14 +365,47 @@ export default function GenerateurFirmware() {
   const [code,     setCode]     = useState('')
   const [copie,    setCopie]    = useState(false)
   const [portails, setPortails] = useState([])
+  const [uploadFw,      setUploadFw]      = useState({ fichier: null, version: '' })
+  const [uploadStatus,  setUploadStatus]  = useState(null) // null | 'loading' | 'ok' | 'err'
+  const [uploadMsg,     setUploadMsg]     = useState('')
+  const [firmwareInfo,  setFirmwareInfo]  = useState(null)
 
   useEffect(() => {
     api.portails().then(liste => setPortails(liste)).catch(() => {})
+    api.firmwareInfo().then(setFirmwareInfo).catch(() => {})
   }, [])
 
   function maj(champ, valeur) {
     setForm(f => ({ ...f, [champ]: valeur }))
     setCode('')
+  }
+
+  async function soumettreUpload(e) {
+    e.preventDefault()
+    if (!uploadFw.fichier || !uploadFw.version.trim()) return
+    setUploadStatus('loading')
+    setUploadMsg('')
+    try {
+      const formData = new FormData()
+      formData.append('file', uploadFw.fichier)
+      formData.append('version', uploadFw.version.trim())
+      const token = localStorage.getItem('ng_token')
+      const API_BASE = import.meta.env.VITE_API_URL || ''
+      const resp = await fetch(`${API_BASE}/api/firmware/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.detail || 'Erreur upload')
+      setUploadStatus('ok')
+      setUploadMsg(data.message)
+      setFirmwareInfo({ version: uploadFw.version.trim(), disponible: true, date: new Date().toISOString() })
+      setUploadFw({ fichier: null, version: '' })
+    } catch (err) {
+      setUploadStatus('err')
+      setUploadMsg(err.message)
+    }
   }
 
   function generer() {
@@ -407,6 +440,65 @@ export default function GenerateurFirmware() {
       <div className="page-header">
         <h1>Générateur de firmware</h1>
         <p>Configurez les paramètres de votre nouvel ESP32 et téléchargez le fichier <code>.ino</code> prêt à flasher</p>
+      </div>
+
+      {/* ── Déployer le firmware ── */}
+      <div className="box" style={{ marginBottom: 24 }}>
+        <div className="box-header">
+          <h2><Upload size={15} /> Déployer le firmware sur les radars</h2>
+          {firmwareInfo?.disponible && (
+            <span style={{ fontSize: 13, color: '#00F5A0' }}>
+              Version actuelle sur le serveur : <strong style={{ fontFamily: 'monospace' }}>v{firmwareInfo.version}</strong>
+              {firmwareInfo.date && <span style={{ color: 'var(--slate)', marginLeft: 8 }}>({firmwareInfo.date?.slice(0, 10)})</span>}
+            </span>
+          )}
+        </div>
+        <div className="box-body">
+          <p className="text-muted text-sm" style={{ marginBottom: 16, lineHeight: 1.7 }}>
+            Compilez le firmware dans Arduino IDE (<strong>Croquis → Exporter les binaires compilés</strong>), puis uploadez le fichier <code>.bin</code> ici.
+            Le bouton <strong>Mettre à jour</strong> apparaîtra ensuite automatiquement sur chaque radar qui n'est pas à jour dans la page <strong>NearGate Radars</strong>.
+          </p>
+          <form onSubmit={soumettreUpload} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div className="field" style={{ flex: '1 1 220px', marginBottom: 0 }}>
+              <label>Fichier .bin compilé</label>
+              <input
+                type="file"
+                accept=".bin"
+                onChange={e => setUploadFw(f => ({ ...f, fichier: e.target.files[0] || null }))}
+                required
+                style={{ background: 'var(--navy-light)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', fontSize: 13, color: 'var(--text)', width: '100%' }}
+              />
+            </div>
+            <div className="field" style={{ flex: '0 1 160px', marginBottom: 0 }}>
+              <label>Numéro de version</label>
+              <input
+                placeholder="ex : 2.2.0"
+                value={uploadFw.version}
+                onChange={e => setUploadFw(f => ({ ...f, version: e.target.value }))}
+                required
+                style={{ fontFamily: 'monospace', fontSize: 13 }}
+              />
+            </div>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={uploadStatus === 'loading' || !uploadFw.fichier || !uploadFw.version}
+              style={{ flexShrink: 0 }}
+            >
+              <Upload size={14} /> {uploadStatus === 'loading' ? 'Upload en cours…' : 'Uploader'}
+            </button>
+          </form>
+          {uploadMsg && (
+            <div style={{
+              marginTop: 12, padding: '8px 14px', borderRadius: 8, fontSize: 13,
+              background: uploadStatus === 'ok' ? '#00F5A022' : '#FF6B6B22',
+              border: `1px solid ${uploadStatus === 'ok' ? '#00F5A055' : '#FF6B6B55'}`,
+              color: uploadStatus === 'ok' ? '#00F5A0' : '#FF6B6B',
+            }}>
+              {uploadMsg}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="box">

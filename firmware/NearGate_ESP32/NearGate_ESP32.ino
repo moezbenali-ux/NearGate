@@ -26,6 +26,7 @@
 #include <BLEAdvertisedDevice.h>
 #include <WiFi.h>
 #include <ArduinoOTA.h>
+#include <HTTPUpdate.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
@@ -103,6 +104,10 @@ unsigned long relais_ouvert_depuis  = 0;
 
 // Demande d'ouverture posée par le callback MQTT, traitée dans loop()
 volatile bool demande_ouverture = false;
+
+// OTA HTTP (mise à jour depuis le dashboard)
+volatile bool demande_ota_http = false;
+String        ota_http_url     = "";
 
 // Capteur ultrason actif ou bypasser (modifiable via MQTT)
 bool capteur_actif = true;
@@ -253,6 +258,14 @@ void callback_mqtt(char* topic, byte* payload, unsigned int length) {
   else if (strcmp(action, "config_capteur") == 0) {
     capteur_actif = doc["actif"] | true;
     Serial.printf("[CONFIG] Capteur ultrason : %s\n", capteur_actif ? "actif" : "bypassé");
+  }
+  else if (strcmp(action, "ota_http") == 0) {
+    const char* url = doc["url"];
+    if (url && strlen(url) > 0) {
+      ota_http_url   = String(url);
+      demande_ota_http = true;
+      Serial.printf("[OTA-HTTP] Mise à jour demandée : %s\n", url);
+    }
   }
 }
 
@@ -467,6 +480,37 @@ void loop() {
         }
       }
     }
+  }
+
+  // ── OTA HTTP (mise à jour firmware depuis le dashboard) ───────────────────
+  if (demande_ota_http) {
+    demande_ota_http = false;
+    Serial.println("[OTA-HTTP] Démarrage — arrêt du scan BLE...");
+    bleScan->stop();
+    mqttClient.disconnect();
+
+    WiFiClient updateClient;
+    httpUpdate.setLedPin(LED_BUILTIN, LOW);
+    httpUpdate.rebootOnUpdate(true);
+
+    Serial.printf("[OTA-HTTP] Téléchargement depuis : %s\n", ota_http_url.c_str());
+    t_httpUpdate_return ret = httpUpdate.update(updateClient, ota_http_url);
+
+    switch (ret) {
+      case HTTP_UPDATE_FAILED:
+        Serial.printf("[OTA-HTTP] Échec (%d) : %s\n",
+                      httpUpdate.getLastError(),
+                      httpUpdate.getLastErrorString().c_str());
+        break;
+      case HTTP_UPDATE_NO_UPDATES:
+        Serial.println("[OTA-HTTP] Pas de mise à jour (même version).");
+        break;
+      case HTTP_UPDATE_OK:
+        Serial.println("[OTA-HTTP] Succès — redémarrage...");
+        break;
+    }
+    // Si pas de reboot automatique (update échouée), on reconnecte
+    connecter_mqtt();
   }
 
   // Scan BLE (2 secondes par cycle)

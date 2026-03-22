@@ -16,7 +16,7 @@ from email.mime.text import MIMEText
 from typing import Optional
 from pathlib import Path
 
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, Query, Request, status, UploadFile, File
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Query, Request, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
@@ -72,6 +72,9 @@ app.add_middleware(
 )
 
 router = APIRouter()
+
+FIRMWARE_BIN_PATH  = Path(__file__).parent.parent / "firmware" / "latest.bin"
+FIRMWARE_INFO_PATH = Path(__file__).parent.parent / "firmware" / "latest.json"
 
 
 # ─── Contrôle d'accès par rôle ─────────────────────────────────────────────
@@ -714,6 +717,65 @@ def configurer_capteur(portail_id: str, body: dict, current_user=Depends(require
     )
     logger.info("Capteur ultrason portail %s → %s par %s", portail_id, "actif" if actif else "bypassé", current_user["email"])
     return {"message": f"Capteur ultrason {'activé' if actif else 'bypassé'}.", "actif": actif}
+
+
+# ─── Firmware OTA ───────────────────────────────────────────────────────────
+
+@router.post("/firmware/upload")
+async def upload_firmware(
+    file: UploadFile = File(...),
+    version: str = Form(...),
+    current_user=Depends(require_role("admin"))
+):
+    """Upload du binaire compilé (.bin) pour la mise à jour OTA des radars."""
+    if not file.filename.endswith(".bin"):
+        raise HTTPException(status_code=400, detail="Le fichier doit être un .bin compilé.")
+    FIRMWARE_BIN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    content = await file.read()
+    FIRMWARE_BIN_PATH.write_bytes(content)
+    import json as _json
+    FIRMWARE_INFO_PATH.write_text(_json.dumps({
+        "version":  version.strip(),
+        "taille":   len(content),
+        "date":     datetime.now().isoformat(sep=" ", timespec="seconds"),
+    }))
+    logger.info("Firmware v%s uploadé (%d octets) par %s", version, len(content), current_user["email"])
+    return {"message": f"Firmware v{version} uploadé avec succès ({len(content)} octets)."}
+
+
+@router.get("/firmware/info")
+def firmware_info():
+    """Retourne les informations sur le firmware disponible pour OTA."""
+    import json as _json
+    if not FIRMWARE_INFO_PATH.exists() or not FIRMWARE_BIN_PATH.exists():
+        return {"disponible": False, "version": None, "taille": None, "date": None}
+    info = _json.loads(FIRMWARE_INFO_PATH.read_text())
+    info["disponible"] = True
+    return info
+
+
+@router.get("/firmware/bin")
+def firmware_bin():
+    """Sert le binaire firmware pour la mise à jour OTA (accès public — requis par l'ESP32)."""
+    if not FIRMWARE_BIN_PATH.exists():
+        raise HTTPException(status_code=404, detail="Aucun firmware disponible.")
+    return FileResponse(
+        FIRMWARE_BIN_PATH,
+        media_type="application/octet-stream",
+        filename="NearGate_ESP32.bin"
+    )
+
+
+@router.post("/radar/{mac}/ota")
+def radar_ota(mac: str, current_user=Depends(require_role("admin"))):
+    """Déclenche la mise à jour OTA HTTP sur un radar via MQTT."""
+    import json as _json
+    if not FIRMWARE_BIN_PATH.exists():
+        raise HTTPException(status_code=400, detail="Aucun firmware disponible. Uploadez d'abord un .bin.")
+    url = "http://192.168.42.1:8000/api/firmware/bin"
+    mqtt_client.publish(f"neargate/commande/{mac}", _json.dumps({"action": "ota_http", "url": url}))
+    logger.info("OTA HTTP déclenché sur radar %s par %s", mac, current_user["email"])
+    return {"message": f"Commande OTA envoyée au radar {mac}. Mise à jour en cours..."}
 
 
 # ─── Commande manuelle ─────────────────────────────────────────────────────

@@ -865,7 +865,7 @@ def ouvrir_portail(portail_id: str, current_user=Depends(get_current_user)):
     now_local = datetime.now().isoformat(sep=" ", timespec="seconds")
     conn.execute(
         "INSERT INTO evenements (badge_uuid, rssi, action, direction, portail_id, horodatage) VALUES (?, ?, ?, ?, ?, ?)",
-        ("manuel", None, "ouverture_manuelle", portail["type"], portail_id, now_local),
+        (f"manuel:{current_user['nom']}", None, "ouverture_manuelle", portail["type"], portail_id, now_local),
     )
     conn.commit()
     conn.close()

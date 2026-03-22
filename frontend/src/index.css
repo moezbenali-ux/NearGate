@@ -256,6 +256,7 @@ tr:last-child td { border-bottom: none; }
 .badge.sortie     { background: rgba(0,245,160,0.12);   color: var(--green); }
 .badge.interieur  { background: rgba(255,181,71,0.15);  color: var(--warning); }
 .badge.refus      { background: rgba(255,77,109,0.15);  color: var(--error); }
+.badge.manuel     { background: rgba(255,181,71,0.15);  color: #FFB347; }
 
 /* ── Boutons ── */
 .btn {

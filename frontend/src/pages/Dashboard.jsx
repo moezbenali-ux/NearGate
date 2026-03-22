@@ -89,8 +89,9 @@ export default function Dashboard() {
   const evenementsFiltres = useMemo(() => {
     return evenements.filter(e => {
       if (filtreDirection !== 'tous' && e.direction !== filtreDirection) return false
-      if (filtreConnu === 'connu'   && !e.badge_nom)  return false
-      if (filtreConnu === 'inconnu' &&  e.badge_nom)  return false
+      const estManuel = e.badge_uuid?.startsWith('manuel:')
+      if (filtreConnu === 'connu'   && !e.badge_nom && !estManuel) return false
+      if (filtreConnu === 'inconnu' && (e.badge_nom || estManuel)) return false
       if (filtreUser  && e.badge_nom !== filtreUser)  return false
       if (filtrePortail && e.portail_id !== filtrePortail) return false
       if (filtrePeriode === 'today' && !e.horodatage?.startsWith(today)) return false
@@ -292,14 +293,26 @@ export default function Dashboard() {
                     <tr key={e.id}>
                       <td>{fmt(e.horodatage)}</td>
                       <td>
-                        <div style={{ fontWeight: 500, fontSize: 14 }}>
-                          {e.badge_nom || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 12 }}>Badge inconnu</span>}
-                        </div>
-                        <div className="text-muted text-sm">{e.badge_uuid.slice(0, 8)}…</div>
+                        {e.action === 'ouverture_manuelle' ? (
+                          <div style={{ fontWeight: 500, fontSize: 14 }}>
+                            ⚡ {e.badge_uuid.split(':')[1] || 'Manuel'}
+                          </div>
+                        ) : (
+                          <>
+                            <div style={{ fontWeight: 500, fontSize: 14 }}>
+                              {e.badge_nom || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 12 }}>Badge inconnu</span>}
+                            </div>
+                            <div className="text-muted text-sm">{e.badge_uuid.slice(0, 8)}…</div>
+                          </>
+                        )}
                       </td>
                       <td>
-                        <span className={`badge ${e.direction}`}>
-                          {e.direction === 'entree' ? '↘ Entrée' : e.direction === 'sortie' ? '↗ Sortie' : e.direction === 'présence' ? '· Présence' : e.direction}
+                        <span className={`badge ${e.action === 'ouverture_manuelle' ? 'manuel' : e.direction}`}>
+                          {e.action === 'ouverture_manuelle' ? '⚡ Manuel'
+                            : e.direction === 'entree' ? '↘ Entrée'
+                            : e.direction === 'sortie' ? '↗ Sortie'
+                            : e.direction === 'présence' ? '· Présence'
+                            : e.direction}
                         </span>
                       </td>
                       <td className="text-muted text-sm">{portails.find(p => p.portail_id === e.portail_id)?.nom || e.portail_id}</td>

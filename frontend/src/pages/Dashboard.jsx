@@ -243,7 +243,7 @@ export default function Dashboard() {
                       </td>
                       <td>
                         <span className={`badge ${e.direction}`}>
-                          {e.direction === 'entree' ? '↘ Entrée' : e.direction === 'sortie' ? '↗ Sortie' : e.direction}
+                          {e.direction === 'entree' ? '↘ Entrée' : e.direction === 'sortie' ? '↗ Sortie' : e.direction === 'présence' ? '· Présence' : e.direction}
                         </span>
                       </td>
                       <td className="text-muted">{e.rssi} dBm</td>

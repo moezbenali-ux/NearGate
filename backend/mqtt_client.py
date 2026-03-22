@@ -47,6 +47,10 @@ esp32_status: dict = {}
 # Déduplication BLE — uuid → datetime de la dernière action déclenchée
 _dedup_cache: dict = {}
 
+# Dedup "présence" — uuid → datetime du dernier événement présence enregistré
+_presence_cache: dict = {}
+PRESENCE_DEDUP_SEC = 120  # 1 événement "présence" max toutes les 2 min par badge
+
 # Badges non autorisés détectés par l'ESP32 — en attente d'approbation
 # clé : "uuid:minor" (ou "uuid" si pas de minor), valeur : dict d'infos
 badges_en_attente: dict = {}
@@ -218,6 +222,15 @@ def _marquer_action(uuid: str):
     _dedup_cache[uuid] = datetime.now()
 
 
+def _enregistrer_presence(uuid, rssi, portail_id):
+    """Enregistre un événement 'présence' si pas d'événement depuis PRESENCE_DEDUP_SEC."""
+    derniere = _presence_cache.get(uuid)
+    if derniere and (datetime.now() - derniere).total_seconds() < PRESENCE_DEDUP_SEC:
+        return
+    _presence_cache[uuid] = datetime.now()
+    _enregistrer_evenement(uuid, rssi, "présence", portail_id, "présence")
+
+
 # ─── Machine d'états ───────────────────────────────────────────────────────
 
 def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id, esp32_mac):
@@ -277,6 +290,8 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id, esp32_mac):
             else:
                 logger.debug("Badge %s LIBRE — RSSI insuffisant (portail=%s, RSSI=%d)",
                              uuid, portail_id, rssi)
+                _update_last_seen(uuid, rssi)
+                _enregistrer_presence(uuid, rssi, portail_id)
         else:
             _update_last_seen(uuid, rssi)
             logger.debug("Badge %s déjà INTÉRIEUR — portail entrée ignoré", uuid)
@@ -298,6 +313,7 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id, esp32_mac):
             _enregistrer_evenement(uuid, rssi, "ouverture", portail_id, "sortie")
         else:
             _update_last_seen(uuid, rssi)
+            _enregistrer_presence(uuid, rssi, portail_id)
             logger.debug("Badge %s — RSSI insuffisant pour sortie (portail=%s, RSSI=%d)",
                          uuid, portail_id, rssi)
 
@@ -322,6 +338,7 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id, esp32_mac):
                 _enregistrer_evenement(uuid, rssi, "ouverture", portail_id, "sortie")
         else:
             _update_last_seen(uuid, rssi)
+            _enregistrer_presence(uuid, rssi, portail_id)
             logger.debug("Badge %s — RSSI insuffisant (portail=%s bidirectionnel, RSSI=%d)", uuid, portail_id, rssi)
 
 

@@ -139,16 +139,14 @@ export default function Dashboard() {
             : (
               <table>
                 <thead>
-                  <tr><th>Nom</th><th>UUID</th><th>Entrée</th><th>Dernière vue</th><th>RSSI</th><th>Action</th></tr>
+                  <tr><th>Nom</th><th>Entrée</th><th>Dernière vue</th><th>Action</th></tr>
                 </thead>
                 <tbody>
                   {etats.map(e => (
                     <tr key={e.uuid}>
                       <td><strong>{e.nom || '—'}</strong></td>
-                      <td className="text-muted text-sm">{e.uuid}</td>
                       <td>{fmt(e.entre_le)}</td>
                       <td>{fmt(e.last_seen_at)}</td>
-                      <td className="text-muted">{e.last_seen_rssi} dBm</td>
                       <td>
                         {libererConfirm === e.uuid ? (
                           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
@@ -242,7 +240,7 @@ export default function Dashboard() {
             : (
               <table>
                 <thead>
-                  <tr><th>Date</th><th>Utilisateur</th><th>Direction</th><th>RSSI</th><th>NG Radar</th></tr>
+                  <tr><th>Date</th><th>Utilisateur</th><th>Direction</th><th>NG Radar</th></tr>
                 </thead>
                 <tbody>
                   {evenementsFiltres.map(e => (
@@ -259,7 +257,6 @@ export default function Dashboard() {
                           {e.direction === 'entree' ? '↘ Entrée' : e.direction === 'sortie' ? '↗ Sortie' : e.direction === 'présence' ? '· Présence' : e.direction}
                         </span>
                       </td>
-                      <td className="text-muted">{e.rssi} dBm</td>
                       <td className="text-muted text-sm">{portails.find(p => p.portail_id === e.portail_id)?.nom || e.portail_id}</td>
                     </tr>
                   ))}

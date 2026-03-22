@@ -445,8 +445,19 @@ def on_message(client, userdata, msg):
             return
         portail_id = portail["portail_id"]
 
-        # Clé composite badge : "uuid:minor" si minor présent, sinon uuid seul (legacy)
-        badge_key = f"{uuid}:{minor}" if minor is not None else uuid
+        # Clé composite badge : "uuid:minor" si minor présent
+        # Si pas de minor (ancien firmware), on cherche le badge correspondant en DB
+        # pour récupérer la vraie clé uuid:minor
+        if minor is not None:
+            badge_key = f"{uuid}:{minor}"
+        else:
+            conn_lookup = get_connection()
+            row_lookup = conn_lookup.execute(
+                "SELECT uuid FROM badges WHERE uuid = ? OR uuid LIKE ? LIMIT 1",
+                (uuid, uuid + ":%")
+            ).fetchone()
+            conn_lookup.close()
+            badge_key = row_lookup["uuid"] if row_lookup else uuid
 
         # Mise à jour dernière vue + batterie si disponible
         try:

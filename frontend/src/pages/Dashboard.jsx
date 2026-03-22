@@ -38,6 +38,7 @@ export default function Dashboard() {
   const [evenements, setEvenements] = useState([])
   const [portails,   setPortails]   = useState([])
   const [loading,    setLoading]    = useState(true)
+  const [libererConfirm, setLibererConfirm] = useState(null) // uuid en attente de confirmation
 
   // Filtres
   const [filtreDirection, setFiltreDirection] = useState('tous')   // 'tous' | 'entree' | 'sortie'
@@ -149,10 +150,22 @@ export default function Dashboard() {
                       <td>{fmt(e.last_seen_at)}</td>
                       <td className="text-muted">{e.last_seen_rssi} dBm</td>
                       <td>
-                        <button className="btn btn-ghost btn-sm"
-                          onClick={async () => { await api.libererBadge(e.uuid); charger() }}>
-                          <LogOutIcon size={13} /> Libérer
-                        </button>
+                        {libererConfirm === e.uuid ? (
+                          <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                            <span style={{ fontSize: 12, color: '#FFB347' }}>Confirmer ?</span>
+                            <button className="btn btn-sm" style={{ background: '#FF6B6B22', border: '1px solid #FF6B6B55', color: '#FF6B6B' }}
+                              onClick={async () => { setLibererConfirm(null); await api.libererBadge(e.uuid); charger() }}>
+                              Oui
+                            </button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setLibererConfirm(null)}>
+                              Annuler
+                            </button>
+                          </span>
+                        ) : (
+                          <button className="btn btn-ghost btn-sm" onClick={() => setLibererConfirm(e.uuid)}>
+                            <LogOutIcon size={13} /> Libérer
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

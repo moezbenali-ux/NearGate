@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Car, Activity, RefreshCw, LogOut as LogOutIcon, Filter } from 'lucide-react'
+import { Car, Activity, RefreshCw, LogOut as LogOutIcon, Filter, Zap } from 'lucide-react'
 import { api } from '../api'
 
 function fmt(iso) {
@@ -38,7 +38,15 @@ export default function Dashboard() {
   const [evenements, setEvenements] = useState([])
   const [portails,   setPortails]   = useState([])
   const [loading,    setLoading]    = useState(true)
-  const [libererConfirm, setLibererConfirm] = useState(null) // uuid en attente de confirmation
+  const [libererConfirm,    setLibererConfirm]    = useState(null)
+  const [ouvertureEnCours,  setOuvertureEnCours]  = useState(null) // portail_id en cours d'ouverture
+  const [toasts,            setToasts]            = useState([])
+
+  function afficherToast(message, type = 'succes') {
+    const id = Date.now()
+    setToasts(prev => [...prev, { id, message, type }])
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000)
+  }
 
   // Filtres
   const [filtreDirection, setFiltreDirection] = useState('tous')   // 'tous' | 'entree' | 'sortie'
@@ -125,6 +133,38 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Ouverture manuelle */}
+      {portails.filter(p => p.actif).length > 0 && (
+        <div className="box" style={{ marginBottom: 20 }}>
+          <div className="box-header">
+            <h2><Zap size={15} /> Ouverture manuelle</h2>
+          </div>
+          <div style={{ padding: '12px 20px', display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {portails.filter(p => p.actif).map(p => (
+              <button key={p.portail_id}
+                className="btn btn-primary"
+                disabled={ouvertureEnCours === p.portail_id}
+                onClick={async () => {
+                  setOuvertureEnCours(p.portail_id)
+                  try {
+                    await api.ouvrirPortail(p.portail_id)
+                    afficherToast(`${p.nom} ouvert`)
+                  } catch (err) {
+                    afficherToast(err.message || `Erreur ouverture ${p.nom}`, 'erreur')
+                  } finally {
+                    setOuvertureEnCours(null)
+                  }
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                <Zap size={14} />
+                {ouvertureEnCours === p.portail_id ? 'Ouverture…' : `Ouvrir — ${p.nom}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Véhicules présents */}
       <div className="box">
         <div className="box-header">
@@ -152,7 +192,11 @@ export default function Dashboard() {
                           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                             <span style={{ fontSize: 12, color: '#FFB347' }}>Confirmer ?</span>
                             <button className="btn btn-sm" style={{ background: '#FF6B6B22', border: '1px solid #FF6B6B55', color: '#FF6B6B' }}
-                              onClick={async () => { setLibererConfirm(null); await api.libererBadge(e.uuid); charger() }}>
+                              onClick={async () => {
+                                setLibererConfirm(null)
+                                try { await api.libererBadge(e.uuid); charger(); afficherToast(`${e.nom || 'Badge'} libéré`) }
+                                catch { afficherToast('Erreur lors de la libération', 'erreur') }
+                              }}>
                               Oui
                             </button>
                             <button className="btn btn-ghost btn-sm" onClick={() => setLibererConfirm(null)}>
@@ -266,5 +310,22 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+
+    {/* Toasts */}
+    <div style={{ position: 'fixed', bottom: 24, right: 24, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 1000 }}>
+      {toasts.map(t => (
+        <div key={t.id} style={{
+          padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+          background: t.type === 'succes' ? '#00F5A022' : '#FF6B6B22',
+          border: `1px solid ${t.type === 'succes' ? '#00F5A055' : '#FF6B6B55'}`,
+          color: t.type === 'succes' ? '#00F5A0' : '#FF6B6B',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          animation: 'fadeIn 0.2s ease',
+        }}>
+          {t.type === 'succes' ? '✓' : '✗'} {t.message}
+        </div>
+      ))}
+    </div>
+    <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
   )
 }

@@ -32,16 +32,28 @@ export default function Badges() {
   const [duree,   setDuree]   = useState(5)
   const [ajouts,  setAjouts]  = useState({})
   const [scanErr, setScanErr] = useState(null)
-  const [supervision, setSupervision] = useState(null)
-  const [editNomId, setEditNomId] = useState(null)
-  const [editNom,   setEditNom]   = useState('')
+  const [supervision,    setSupervision]    = useState(null)
+  const [enAttente,      setEnAttente]      = useState([])
+  const [editNomId,      setEditNomId]      = useState(null)
+  const [editNom,        setEditNom]        = useState('')
+  const [nomApprobation, setNomApprobation] = useState({}) // badge_key → nom saisi
 
   async function charger() {
-    const [b, sup] = await Promise.all([api.badges(), api.supervision()])
+    const [b, sup, ea] = await Promise.all([api.badges(), api.supervision(), api.badgesEnAttente()])
     setBadges(b)
     setSupervision(sup)
+    setEnAttente(ea)
   }
-  useEffect(() => { charger() }, [])
+  useEffect(() => {
+    charger()
+    const token = localStorage.getItem('ng_token')
+    if (!token) return
+    const es = new EventSource(`/api/events?token=${encodeURIComponent(token)}`)
+    es.onmessage = (e) => {
+      try { if (JSON.parse(e.data).type === 'badge_en_attente') api.badgesEnAttente().then(setEnAttente) } catch {}
+    }
+    return () => es.close()
+  }, [])
 
   function afficherNotif(msg, type = 'ok') {
     setNotif({ msg, type })
@@ -260,6 +272,64 @@ export default function Badges() {
           </form>
         </div>
       </div>
+
+      {/* ── Badges en attente ── */}
+      {enAttente.length > 0 && (
+        <div className="box" style={{ borderColor: '#FFB347', marginBottom: 24 }}>
+          <div className="box-header">
+            <h2 style={{ color: '#FFB347' }}>⚠ {enAttente.length} badge(s) détecté(s) non reconnu(s)</h2>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Identifiant (UUID:Minor)</th><th>Portail</th><th>RSSI</th><th>Premier vu</th><th>Nom à attribuer</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {enAttente.map(b => (
+                  <tr key={b.badge_key}>
+                    <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{b.badge_key}</td>
+                    <td className="text-muted text-sm">{b.portail_id}</td>
+                    <td className="text-muted">{b.rssi} dBm</td>
+                    <td className="text-muted text-sm">{b.premier_vu?.slice(0, 16)}</td>
+                    <td>
+                      <input
+                        placeholder="Nom du badge"
+                        value={nomApprobation[b.badge_key] || ''}
+                        onChange={e => setNomApprobation(n => ({ ...n, [b.badge_key]: e.target.value }))}
+                        style={{ fontSize: 13, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--electric)', background: 'var(--navy-light)', color: 'var(--text)', width: 160 }}
+                      />
+                    </td>
+                    <td>
+                      <div className="flex gap-8">
+                        <button
+                          className="btn btn-primary btn-sm"
+                          disabled={!nomApprobation[b.badge_key]?.trim()}
+                          onClick={async () => {
+                            await api.approuverBadge(b.badge_key, nomApprobation[b.badge_key])
+                            afficherNotif('Badge approuvé et enregistré.')
+                            charger()
+                          }}
+                        >
+                          <Check size={13} /> Approuver
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={async () => {
+                            await api.ignorerBadgeEnAttente(b.badge_key)
+                            setEnAttente(ea => ea.filter(x => x.badge_key !== b.badge_key))
+                          }}
+                        >
+                          <X size={13} /> Ignorer
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* ── Liste ── */}
       <div className="box">

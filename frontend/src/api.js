@@ -54,6 +54,9 @@ export const api = {
   ajouterBadge: (data) => req('POST', '/badges', data),
   modifierBadge: (uuid, data) => req('PATCH', `/badges/${uuid}`, data),
   supprimerBadge: (uuid) => req('DELETE', `/badges/${uuid}`),
+  badgesEnAttente: () => req('GET', '/badges/en-attente'),
+  approuverBadge: (badge_key, nom) => req('POST', '/badges/approuver', { badge_key, nom }),
+  ignorerBadgeEnAttente: (badge_key) => req('DELETE', `/badges/en-attente/${encodeURIComponent(badge_key)}`),
 
   // États
   etats: () => req('GET', '/etats'),

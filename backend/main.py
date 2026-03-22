@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from database import init_db, get_connection
 from auth import verifier_api_key
 from auth_jwt import creer_token, verifier_mdp, get_current_user
-from mqtt_client import demarrer_mqtt, esp32_status
+from mqtt_client import demarrer_mqtt, esp32_status, badges_en_attente
 from sync_agent import demarrer_sync
 import sse
 
@@ -452,6 +452,47 @@ def supprimer_badge(uuid: str, current_user=Depends(get_current_user)):
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Badge introuvable.")
     return {"message": "Badge supprimé."}
+
+
+# ─── Badges en attente d'approbation ───────────────────────────────────────
+
+@router.get("/badges/en-attente")
+def lister_badges_en_attente(current_user=Depends(get_current_user)):
+    return list(badges_en_attente.values())
+
+
+class ApprobationBadge(BaseModel):
+    badge_key: str
+    nom: str
+
+@router.post("/badges/approuver", status_code=201)
+def approuver_badge(body: ApprobationBadge, current_user=Depends(get_current_user)):
+    if body.badge_key not in badges_en_attente:
+        raise HTTPException(status_code=404, detail="Badge en attente introuvable.")
+    # Extraire uuid et minor depuis badge_key
+    parts = body.badge_key.rsplit(":", 1)
+    uuid  = parts[0]
+    minor = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else None
+    nom   = body.nom.strip() or body.badge_key
+    conn  = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO badges (uuid, nom, modele, actif) VALUES (?, ?, ?, 1)",
+            (body.badge_key, nom, nom),
+        )
+        conn.commit()
+    except Exception:
+        conn.close()
+        raise HTTPException(status_code=409, detail="Badge déjà enregistré.")
+    conn.close()
+    badges_en_attente.pop(body.badge_key, None)
+    return {"message": "Badge approuvé.", "uuid": body.badge_key}
+
+
+@router.delete("/badges/en-attente/{badge_key:path}")
+def ignorer_badge_en_attente(badge_key: str, current_user=Depends(get_current_user)):
+    badges_en_attente.pop(badge_key, None)
+    return {"message": "Badge ignoré."}
 
 
 # ─── États des badges ──────────────────────────────────────────────────────

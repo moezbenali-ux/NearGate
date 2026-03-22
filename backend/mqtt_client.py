@@ -47,6 +47,10 @@ esp32_status: dict = {}
 # Déduplication BLE — uuid → datetime de la dernière action déclenchée
 _dedup_cache: dict = {}
 
+# Badges non autorisés détectés par l'ESP32 — en attente d'approbation
+# clé : "uuid:minor" (ou "uuid" si pas de minor), valeur : dict d'infos
+badges_en_attente: dict = {}
+
 # Alertes déjà envoyées — évite le spam (clé → date de dernière alerte)
 _alertes_envoyees: dict = {}  # ex: "offline:B0:CB:D8:8B:87:88" → date
 
@@ -225,6 +229,20 @@ def traiter_detection(mqtt_client_instance, uuid, rssi, portail_id, esp32_mac):
     if not _badge_autorise(uuid):
         logger.info("Badge %s non autorisé → refus", uuid)
         _enregistrer_evenement(uuid, rssi, "refus", portail_id, "inconnu")
+        # Capture pour approbation depuis le dashboard
+        now = datetime.now().isoformat(sep=" ", timespec="seconds")
+        if uuid not in badges_en_attente:
+            badges_en_attente[uuid] = {
+                "badge_key": uuid,
+                "rssi": rssi,
+                "portail_id": portail_id,
+                "premier_vu": now,
+                "dernier_vu": now,
+            }
+        else:
+            badges_en_attente[uuid]["dernier_vu"] = now
+            badges_en_attente[uuid]["rssi"] = rssi
+        sse.diffuser("badge_en_attente")
         return
 
     seuil_entree  = int(_get_config("rssi_seuil_entree") or -70)

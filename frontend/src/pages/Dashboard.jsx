@@ -311,7 +311,6 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
-    </div>
 
     {/* Toasts */}
     <div style={{ position: 'fixed', bottom: 24, right: 24, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 1000 }}>
@@ -329,5 +328,6 @@ export default function Dashboard() {
       ))}
     </div>
     <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+    </>
   )
 }

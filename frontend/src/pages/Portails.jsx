@@ -231,7 +231,7 @@ export default function Portails() {
               ) : (
                 <select
                   value={form.esp32_mac}
-                  onChange={e => setForm(f => ({ ...f, esp32_mac: e.target.value }))}
+                  onChange={e => setForm(f => ({ ...f, esp32_mac: e.target.value, portail_id: e.target.value }))}
                   required
                   style={{ background: 'var(--navy-light)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '8px 12px', fontSize: 13, width: '100%', maxWidth: 420 }}
                 >

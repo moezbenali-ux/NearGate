@@ -1,33 +1,101 @@
-import { useState, useEffect } from 'react'
-import { Plus, Trash2, Pencil, Check, X, Waves, Wifi, WifiOff } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, Trash2, Pencil, Check, X, Waves, Wifi, WifiOff, Clock, RefreshCw } from 'lucide-react'
 import { api } from '../api'
 
-const user = () => JSON.parse(localStorage.getItem('ng_user') || '{}')
+const user    = () => JSON.parse(localStorage.getItem('ng_user') || '{}')
 const isAdmin = () => user().role === 'admin'
 
-const TYPE_LABELS = { entree: 'Entrée', sortie: 'Sortie' }
 const VIDE = { portail_id: '', nom: '', type: 'entree', description: '', actif: true }
+
+function tempsRelatif(dateStr) {
+  if (!dateStr) return null
+  const diff = Math.floor((Date.now() - new Date(dateStr.replace(' ', 'T') + 'Z').getTime()) / 1000)
+  if (diff < 60)    return `il y a ${diff}s`
+  if (diff < 3600)  return `il y a ${Math.floor(diff / 60)}min`
+  if (diff < 86400) return `il y a ${Math.floor(diff / 3600)}h`
+  return `il y a ${Math.floor(diff / 86400)}j`
+}
+
+function CarteRadar({ radar }) {
+  return (
+    <div style={{
+      background: 'var(--card)',
+      border: `1px solid ${radar.en_ligne ? '#00F5A055' : '#FF6B6B55'}`,
+      borderRadius: 12,
+      padding: '16px 20px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 14,
+    }}>
+      <div style={{
+        width: 40, height: 40, borderRadius: '50%',
+        background: radar.en_ligne ? '#00F5A022' : '#FF6B6B22',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      }}>
+        {radar.en_ligne
+          ? <Wifi size={18} color="#00F5A0" />
+          : <WifiOff size={18} color="#FF6B6B" />
+        }
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+          <strong style={{ fontSize: 14 }}>{radar.label}</strong>
+          <span style={{
+            fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20,
+            background: radar.en_ligne ? '#00F5A022' : '#FF6B6B22',
+            color: radar.en_ligne ? '#00F5A0' : '#FF6B6B',
+            border: `1px solid ${radar.en_ligne ? '#00F5A055' : '#FF6B6B55'}`,
+          }}>
+            {radar.en_ligne ? 'En ligne' : 'Hors ligne'}
+          </span>
+          {!radar.portail_id && (
+            <span style={{ fontSize: 11, color: '#FFB347', background: '#FFB34722', border: '1px solid #FFB34755', borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>
+              Non assigné
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--slate)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: 'monospace', color: 'var(--electric)' }}>{radar.mac}</span>
+          {radar.ip && <span>IP : <strong style={{ color: 'var(--text)' }}>{radar.ip}</strong></span>}
+          {radar.firmware_version && (
+            <span>Firmware : <strong style={{ color: 'var(--text)', fontFamily: 'monospace' }}>v{radar.firmware_version}</strong></span>
+          )}
+          {radar.vu_le
+            ? <span><Clock size={11} style={{ verticalAlign: 'middle', marginRight: 3 }} />Vu {tempsRelatif(radar.vu_le)}</span>
+            : <span style={{ color: '#FF6B6B' }}>Jamais vu — vérifiez la connexion</span>
+          }
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function Portails() {
   const [portails,    setPortails]    = useState([])
+  const [radars,      setRadars]      = useState([])
   const [form,        setForm]        = useState(VIDE)
   const [ajout,       setAjout]       = useState(false)
   const [editId,      setEditId]      = useState(null)
   const [editForm,    setEditForm]    = useState({})
   const [notif,       setNotif]       = useState(null)
   const [erreur,      setErreur]      = useState(null)
-  // capteurEtat : { [portail_id]: true|false } — reflète ce qui a été envoyé à l'ESP32
   const [capteurEtat, setCapteurEtat] = useState({})
 
-  async function charger() {
+  const charger = useCallback(async () => {
     try {
-      setPortails(await api.portails())
+      const [p, sup] = await Promise.all([api.portails(), api.supervision()])
+      setPortails(p)
+      setRadars(sup.esp32)
     } catch (e) {
       setErreur(e.message)
     }
-  }
+  }, [])
 
-  useEffect(() => { charger() }, [])
+  useEffect(() => {
+    charger()
+    const interval = setInterval(charger, 30000)
+    return () => clearInterval(interval)
+  }, [charger])
 
   function flash(msg, ok = true) {
     setNotif({ msg, ok })
@@ -75,8 +143,17 @@ export default function Portails() {
     }
   }
 
+  async function toggleActif(p) {
+    try {
+      await api.modifierPortail(p.portail_id, { actif: !p.actif })
+      charger()
+    } catch (err) {
+      flash(err.message, false)
+    }
+  }
+
   async function toggleCapteur(p) {
-    const actuelActif = capteurEtat[p.portail_id] !== false  // default true
+    const actuelActif = capteurEtat[p.portail_id] !== false
     const nouvelEtat = !actuelActif
     try {
       await api.configurerCapteur(p.portail_id, nouvelEtat)
@@ -87,27 +164,21 @@ export default function Portails() {
     }
   }
 
-  async function toggleActif(p) {
-    try {
-      await api.modifierPortail(p.portail_id, { actif: !p.actif })
-      charger()
-    } catch (err) {
-      flash(err.message, false)
-    }
-  }
-
   return (
     <div className="fade-up">
       <div className="page-header">
         <div>
-          <h1>Portails</h1>
-          <p>{portails.length} portail(s) configuré(s) — {portails.filter(p => p.actif).length} actif(s)</p>
+          <h1>NearGate Radars</h1>
+          <p>{radars.length} radar(s) connu(s) — {radars.filter(r => r.en_ligne).length} en ligne</p>
         </div>
-        {isAdmin() && (
-          <button className="btn btn-primary" onClick={() => setAjout(v => !v)}>
-            <Plus size={15} /> Ajouter un portail
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={charger}><RefreshCw size={13} /> Actualiser</button>
+          {isAdmin() && (
+            <button className="btn btn-primary" onClick={() => setAjout(v => !v)}>
+              <Plus size={15} /> Ajouter un portail
+            </button>
+          )}
+        </div>
       </div>
 
       {notif && (
@@ -127,7 +198,24 @@ export default function Portails() {
         </div>
       )}
 
-      {/* Formulaire d'ajout */}
+      {/* ── Cartes Radars ── */}
+      <div className="box" style={{ marginBottom: 24 }}>
+        <div className="box-header">
+          <h2>Radars connectés</h2>
+          <span style={{ fontSize: 13, color: 'var(--slate)' }}>Mise à jour automatique toutes les 30s</span>
+        </div>
+        <div className="box-body">
+          {radars.length === 0 ? (
+            <div className="empty">Aucun NearGate Radar détecté. Vérifiez la connexion WiFi des boîtiers.</div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+              {radars.map(r => <CarteRadar key={r.mac} radar={r} />)}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Formulaire d'ajout ── */}
       {ajout && isAdmin() && (
         <div className="box" style={{ marginBottom: 24 }}>
           <div className="box-header"><h2>Nouveau portail</h2></div>
@@ -169,20 +257,19 @@ export default function Portails() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="submit" className="btn btn-primary btn-sm">
-                <Check size={14} /> Créer
-              </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAjout(false); setForm(VIDE) }}>
-                Annuler
-              </button>
+              <button type="submit" className="btn btn-primary btn-sm"><Check size={14} /> Créer</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAjout(false); setForm(VIDE) }}>Annuler</button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Liste des portails */}
+      {/* ── Liste des portails ── */}
       <div className="box">
-        <div className="box-header"><h2>Portails configurés</h2></div>
+        <div className="box-header">
+          <h2>Portails configurés</h2>
+          <span style={{ fontSize: 13, color: 'var(--slate)' }}>{portails.length} portail(s) — {portails.filter(p => p.actif).length} actif(s)</span>
+        </div>
         <div className="table-wrap">
           {portails.length === 0
             ? <div className="empty">Aucun portail configuré</div>
@@ -193,7 +280,6 @@ export default function Portails() {
                     <th>Identifiant</th>
                     <th>Nom</th>
                     <th>Type</th>
-                    <th>Description</th>
                     <th>NearGate Radar (MAC)</th>
                     <th>Connectivité</th>
                     <th>Firmware</th>
@@ -212,29 +298,13 @@ export default function Portails() {
                       {editId === p.portail_id ? (
                         <>
                           <td>
-                            <input
-                              value={editForm.nom}
-                              onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))}
-                              style={{ width: '100%', fontSize: 13 }}
-                            />
+                            <input value={editForm.nom} onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))} style={{ width: '100%', fontSize: 13 }} />
                           </td>
                           <td>
-                            <select
-                              value={editForm.type}
-                              onChange={e => setEditForm(f => ({ ...f, type: e.target.value }))}
-                              style={{ fontSize: 13 }}
-                            >
+                            <select value={editForm.type} onChange={e => setEditForm(f => ({ ...f, type: e.target.value }))} style={{ fontSize: 13 }}>
                               <option value="entree">Entrée</option>
                               <option value="sortie">Sortie</option>
                             </select>
-                          </td>
-                          <td>
-                            <input
-                              value={editForm.description}
-                              onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
-                              style={{ width: '100%', fontSize: 13 }}
-                              placeholder="Description…"
-                            />
                           </td>
                           <td>
                             <input
@@ -245,27 +315,19 @@ export default function Portails() {
                               maxLength={12}
                             />
                           </td>
+                          <td>—</td>
+                          <td>—</td>
                           <td>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
-                              <input
-                                type="checkbox"
-                                checked={editForm.actif}
-                                onChange={e => setEditForm(f => ({ ...f, actif: e.target.checked }))}
-                              />
+                              <input type="checkbox" checked={editForm.actif} onChange={e => setEditForm(f => ({ ...f, actif: e.target.checked }))} />
                               Actif
                             </label>
                           </td>
                           <td>—</td>
-                          <td>—</td>
-                          <td>—</td>
                           <td>
                             <div style={{ display: 'flex', gap: 6 }}>
-                              <button className="btn btn-primary btn-sm" onClick={() => sauvegarderEdit(p.portail_id)}>
-                                <Check size={13} /> Sauver
-                              </button>
-                              <button className="btn btn-ghost btn-sm" onClick={() => setEditId(null)}>
-                                <X size={13} />
-                              </button>
+                              <button className="btn btn-primary btn-sm" onClick={() => sauvegarderEdit(p.portail_id)}><Check size={13} /> Sauver</button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => setEditId(null)}><X size={13} /></button>
                             </div>
                           </td>
                         </>
@@ -277,7 +339,6 @@ export default function Portails() {
                               {p.type === 'entree' ? '↘ Entrée' : '↗ Sortie'}
                             </span>
                           </td>
-                          <td className="text-muted text-sm">{p.description || '—'}</td>
                           <td style={{ fontFamily: 'monospace', fontSize: 12, color: p.esp32_mac ? 'var(--electric)' : 'var(--slate)' }}>
                             {p.esp32_mac || <span className="text-muted">Non assigné</span>}
                           </td>
@@ -361,21 +422,16 @@ export default function Portails() {
       <div className="box" style={{ marginTop: 24 }}>
         <div className="box-header"><h2>Comment ça marche</h2></div>
         <div className="box-body text-muted text-sm" style={{ lineHeight: 1.8 }}>
-          <p>Chaque <strong>NearGate Radar</strong> (ESP32) s'identifie automatiquement par son adresse MAC. Il suffit de coller cette MAC dans le champ <strong>NearGate Radar</strong> du portail correspondant — aucune modification du firmware n'est nécessaire.</p>
+          <p>Chaque <strong>NearGate Radar</strong> s'identifie automatiquement par son adresse MAC. Collez cette MAC dans le champ <strong>NearGate Radar (MAC)</strong> du portail correspondant — aucune modification du firmware n'est nécessaire.</p>
           <p>
-            <strong style={{ color: 'var(--text)' }}>Machine d'états :</strong> quand un badge est détecté
-            par n'importe quel portail actif, le backend décide automatiquement s'il s'agit d'une
+            <strong style={{ color: 'var(--text)' }}>Machine d'états :</strong> quand un badge est détecté par n'importe quel portail actif, le backend décide automatiquement s'il s'agit d'une
             <span className="badge entree" style={{ marginLeft: 6, marginRight: 6 }}>↘ Entrée</span>
             ou d'une
             <span className="badge sortie" style={{ marginLeft: 6 }}>↗ Sortie</span>
             selon l'état du badge (déjà dans le parking ou non).
           </p>
           <p>
-            <strong style={{ color: 'var(--text)' }}>Seuils RSSI</strong> configurables dans la page
-            <a href="/configuration" style={{ color: 'var(--electric)', marginLeft: 4 }}>Configuration</a>.
-          </p>
-          <p>
-            <strong style={{ color: 'var(--text)' }}>Trouver la MAC :</strong> la MAC de l'ESP32 s'affiche dans les logs au démarrage (<code style={{ color: 'var(--electric)' }}>[ID] ESP32 MAC : a4cf12abcdef</code>) ou sur la page <a href="/supervision" style={{ color: 'var(--electric)' }}>Supervision</a> dès qu'il est connecté.
+            <strong style={{ color: 'var(--text)' }}>Trouver la MAC :</strong> elle s'affiche dans la section <strong>Radars connectés</strong> ci-dessus dès que le boîtier est connecté au WiFi NearGate.
           </p>
         </div>
       </div>

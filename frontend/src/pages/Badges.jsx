@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, RefreshCw, Power, Trash2, Wifi, WifiOff, Loader, CheckCircle, AlertCircle } from 'lucide-react'
+import { Plus, RefreshCw, Power, Trash2, Wifi, WifiOff, Loader, CheckCircle, AlertCircle, Battery, BatteryLow } from 'lucide-react'
 import { api } from '../api'
 import ImportCSV from '../components/ImportCSV'
 
@@ -32,8 +32,13 @@ export default function Badges() {
   const [duree,   setDuree]   = useState(5)
   const [ajouts,  setAjouts]  = useState({})
   const [scanErr, setScanErr] = useState(null)
+  const [supervision, setSupervision] = useState(null)
 
-  async function charger() { setBadges(await api.badges()) }
+  async function charger() {
+    const [b, sup] = await Promise.all([api.badges(), api.supervision()])
+    setBadges(b)
+    setSupervision(sup)
+  }
   useEffect(() => { charger() }, [])
 
   function afficherNotif(msg, type = 'ok') {
@@ -274,6 +279,75 @@ export default function Badges() {
                 </tbody>
               </table>
             )}
+        </div>
+      </div>
+
+      {/* ── Batterie & Activité ── */}
+      <div className="box" style={{ marginTop: 24 }}>
+        <div className="box-header">
+          <h2>Batterie &amp; Activité</h2>
+          <button className="btn btn-ghost btn-sm" onClick={charger}><RefreshCw size={13} /> Actualiser</button>
+        </div>
+        <div className="table-wrap">
+          {!supervision || supervision.badges.length === 0 ? (
+            <div className="empty">Aucun badge enregistré.</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  {['Badge', 'Statut', 'Batterie', 'Dernière détection'].map(h => (
+                    <th key={h}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {supervision.badges.map((b, i) => {
+                  const pct = b.batterie_pct
+                  const couleur = pct == null ? 'var(--slate)' : pct > 50 ? '#00F5A0' : pct > 20 ? '#FFB347' : '#FF6B6B'
+                  const Icon = pct != null && pct <= 20 ? BatteryLow : Battery
+                  return (
+                    <tr key={b.uuid}>
+                      <td>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{b.nom}</div>
+                        <div style={{ fontSize: 11, color: 'var(--slate)', fontFamily: 'monospace', marginTop: 2 }}>{b.uuid.slice(0, 18)}…</div>
+                      </td>
+                      <td>
+                        <span style={{
+                          fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 20,
+                          background: b.actif ? '#00F5A022' : 'var(--navy-light)',
+                          color: b.actif ? '#00F5A0' : 'var(--slate)',
+                          border: `1px solid ${b.actif ? '#00F5A055' : 'var(--border)'}`,
+                        }}>
+                          {b.actif ? 'Actif' : 'Désactivé'}
+                        </span>
+                      </td>
+                      <td>
+                        {pct == null
+                          ? <span style={{ color: 'var(--slate)', fontSize: 13 }}>—</span>
+                          : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: couleur, fontWeight: 600, fontSize: 14 }}>
+                              <Icon size={15} />{pct}%
+                            </span>
+                        }
+                        {pct != null && pct <= 20 && <div style={{ fontSize: 11, color: '#FF6B6B', marginTop: 3 }}>⚠ Pile faible</div>}
+                      </td>
+                      <td style={{ fontSize: 13, color: 'var(--slate)' }}>
+                        {b.derniere_vue_le
+                          ? (() => {
+                              const diff = Math.floor((Date.now() - new Date(b.derniere_vue_le.replace(' ', 'T') + 'Z').getTime()) / 1000)
+                              if (diff < 60)    return `il y a ${diff}s`
+                              if (diff < 3600)  return `il y a ${Math.floor(diff / 60)}min`
+                              if (diff < 86400) return `il y a ${Math.floor(diff / 3600)}h`
+                              return `il y a ${Math.floor(diff / 86400)}j`
+                            })()
+                          : <span style={{ color: '#FF6B6B' }}>Jamais détecté</span>
+                        }
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 

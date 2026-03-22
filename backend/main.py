@@ -764,12 +764,13 @@ def supervision(current_user=Depends(get_current_user)):
             except Exception:
                 pass
         esp32_list.append({
-            "mac":        mac,
-            "portail_id": info.get("portail_id"),
-            "label":      info.get("label", "Non assigné"),
-            "en_ligne":   en_ligne,
-            "vu_le":      vu_le_str,
-            "ip":         info.get("ip"),
+            "mac":              mac,
+            "portail_id":       info.get("portail_id"),
+            "label":            info.get("label", "Non assigné"),
+            "en_ligne":         en_ligne,
+            "vu_le":            vu_le_str,
+            "ip":               info.get("ip"),
+            "firmware_version": info.get("firmware_version"),
         })
 
     # Badges avec batterie + dernière détection

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, CreditCard, History, Settings, LogOut, Zap, Users, Activity, Menu, X, Cpu, DoorOpen } from 'lucide-react'
+import { LayoutDashboard, CreditCard, History, Settings, LogOut, Zap, Users, Menu, X, Cpu, DoorOpen } from 'lucide-react'
 import { api } from '../api'
 
 const PAGES = {
@@ -9,9 +9,7 @@ const PAGES = {
   '/historique':     'Historique',
   '/gestionnaires':  'Gestionnaires',
   '/configuration':  'Configuration',
-  '/portails':       'Portails',
-  '/radar':          'Radar BLE',
-  '/supervision':    'Supervision',
+  '/portails':       'NearGate Radars',
   '/firmware':       'Générateur firmware',
 }
 
@@ -55,10 +53,7 @@ export default function Layout() {
             <Settings size={17} /> Configuration
           </NavLink>
           <NavLink to="/portails" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            <DoorOpen size={17} /> Portails
-          </NavLink>
-          <NavLink to="/supervision" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            <Activity size={17} /> Supervision
+            <DoorOpen size={17} /> NearGate Radars
           </NavLink>
           <NavLink to="/firmware" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <Cpu size={17} /> Firmware ESP32

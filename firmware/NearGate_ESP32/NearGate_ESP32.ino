@@ -490,7 +490,6 @@ void loop() {
     mqttClient.disconnect();
 
     WiFiClient updateClient;
-    httpUpdate.setLedPin(LED_BUILTIN, LOW);
     httpUpdate.rebootOnUpdate(true);
 
     Serial.printf("[OTA-HTTP] Téléchargement depuis : %s\n", ota_http_url.c_str());

@@ -469,16 +469,19 @@ class ApprobationBadge(BaseModel):
 def approuver_badge(body: ApprobationBadge, current_user=Depends(get_current_user)):
     if body.badge_key not in badges_en_attente:
         raise HTTPException(status_code=404, detail="Badge en attente introuvable.")
-    # Extraire uuid et minor depuis badge_key
-    parts = body.badge_key.rsplit(":", 1)
-    uuid  = parts[0]
-    minor = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else None
-    nom   = body.nom.strip() or body.badge_key
-    conn  = get_connection()
+    nom = body.nom.strip()
+    if not nom:
+        raise HTTPException(status_code=422, detail="Le nom est obligatoire.")
+    conn = get_connection()
+    # Vérification unicité du nom
+    existant = conn.execute("SELECT id FROM badges WHERE nom = ?", (nom,)).fetchone()
+    if existant:
+        conn.close()
+        raise HTTPException(status_code=409, detail=f"Un badge nommé « {nom} » existe déjà.")
     try:
         conn.execute(
-            "INSERT INTO badges (uuid, nom, modele, actif) VALUES (?, ?, ?, 1)",
-            (body.badge_key, nom, nom),
+            "INSERT INTO badges (uuid, nom, actif) VALUES (?, ?, 1)",
+            (body.badge_key, nom),
         )
         conn.commit()
     except Exception:

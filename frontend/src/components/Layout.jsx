@@ -40,6 +40,9 @@ export default function Layout() {
           <NavLink to="/" end onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <LayoutDashboard size={17} /> Dashboard
           </NavLink>
+          <NavLink to="/portails" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+            <DoorOpen size={17} /> NearGate Radars
+          </NavLink>
           <NavLink to="/badges" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <CreditCard size={17} /> Badges
           </NavLink>
@@ -51,9 +54,6 @@ export default function Layout() {
           </NavLink>
           <NavLink to="/configuration" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <Settings size={17} /> Configuration
-          </NavLink>
-          <NavLink to="/portails" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            <DoorOpen size={17} /> NearGate Radars
           </NavLink>
           <NavLink to="/firmware" onClick={fermerMenu} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             <Cpu size={17} /> Firmware ESP32
